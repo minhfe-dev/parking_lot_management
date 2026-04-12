@@ -1,1 +1,25 @@
 
+1. Mô tả chức năng phần mềm
+Hệ thống sẽ chia thành 2 phân hệ chính: Dành cho Nhân viên (Trực bãi) và Dành cho Quản trị viên (Admin).
+
+A. Chức năng cốt lõi (Core Functions)
+Quản lý vào/ra (Check-in/Check-out):
+
+Quét thẻ (RFID/Mã QR) hoặc nhập biển số xe.
+
+Chụp ảnh biển số và khuôn mặt chủ xe (nếu có camera).
+
+Tự động tính toán tiền gửi dựa trên loại xe và thời gian gửi.
+
+Quản lý thẻ xe: Cấp phát, thu hồi hoặc khóa thẻ khi bị mất.
+
+Quản lý giá vé: Cấu hình linh hoạt theo giờ, theo ngày, vé lượt hoặc vé tháng.
+
+Giám sát vị trí: Hiển thị sơ đồ bãi xe, số chỗ còn trống theo thời gian thực.
+
+B. Chức năng quản trị
+Thống kê & Báo cáo: Doanh thu theo ngày/tháng/năm, mật độ xe lưu thông.
+
+Quản lý nhân viên: Phân quyền người dùng, chấm công ca trực.
+
+Quản lý khách hàng thân thiết: Đăng ký và gia hạn vé tháng cho cư dân hoặc nhân viên văn phòng.
