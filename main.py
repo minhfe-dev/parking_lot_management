@@ -1,2 +1,2 @@
 import cv2
-import utils.img_processing
+from src.utils import img_processing
