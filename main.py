@@ -107,8 +107,8 @@ class MainWindow(QWidget):
             "THẺ GỬI NGÀY",
             "LỊCH SỬ XE",
             "CÀI ĐẶT GIÁ",
-            "THỐNG KÊ DOANH THU",
-            "THỐNG KÊ NHÂN VIÊN"
+            "BÁO CÁO - THỐNG KÊ",
+            "ĐĂNG XUẤT"
         ]
 
         positions = [(i, j) for i in range(3) for j in range(3)]
