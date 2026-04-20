@@ -110,16 +110,17 @@ class LoginWindow(QWidget):
         cursor = conn.cursor()
 
         cursor.execute(
-            "SELECT * FROM users WHERE username=%s AND password=%s",
+            "SELECT role FROM users WHERE username=%s AND password=%s",
             (self.user.text(), self.pw.text())
         )
 
         result = cursor.fetchone()
 
         if result:
-            self.switch_to_main()
+            role = result[0]  # lấy role
+            self.switch_to_main(role)  # truyền role
         else:
-            QMessageBox.warning(self, "Lỗi", "Sai tài khoản hoặc mật khẩu! ")
+            QMessageBox.warning(self, "Lỗi", "Sai tài khoản hoặc mật khẩu!")
 
         conn.close()
 
@@ -210,6 +211,274 @@ class ParkingScreen(QWidget):
         layout.addWidget(card)
 
         self.setLayout(layout)
+class StaffScreen(QWidget):
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+
+        layout = QVBoxLayout()
+
+        form = QHBoxLayout()
+
+        self.name = QLineEdit()
+        self.name.setPlaceholderText("Tên")
+
+        self.phone = QLineEdit()
+        self.phone.setPlaceholderText("SĐT")
+
+        self.position = QLineEdit()
+        self.position.setPlaceholderText("Chức vụ")
+
+        form.addWidget(self.name)
+        form.addWidget(self.phone)
+        form.addWidget(self.position)
+        layout.addLayout(form)
+
+        btn_layout = QHBoxLayout()
+
+        add_btn = QPushButton("Thêm")
+        update_btn = QPushButton("Sửa")
+        delete_btn = QPushButton("Xoá")
+
+        btn_layout.addWidget(add_btn)
+        btn_layout.addWidget(update_btn)
+        btn_layout.addWidget(delete_btn)
+        layout.addLayout(btn_layout)
+
+        search_layout = QHBoxLayout()
+
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Tìm theo tên")
+
+        search_btn = QPushButton("Tìm")
+
+        search_layout.addWidget(self.search)
+        search_layout.addWidget(search_btn)
+        layout.addLayout(search_layout)
+
+        self.table = QTableWidget()
+        self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels(["ID", "Tên", "SĐT", "Chức vụ"])
+
+        layout.addWidget(self.table)
+
+        back = QPushButton("← Quay lại")
+        back.clicked.connect(lambda: self.app.setCurrentIndex(1))
+        layout.addWidget(back)
+
+        self.setLayout(layout)
+
+        # EVENT
+        add_btn.clicked.connect(self.add_staff)
+        update_btn.clicked.connect(self.update_staff)
+        delete_btn.clicked.connect(self.delete_staff)
+        search_btn.clicked.connect(self.search_staff)
+        self.table.cellClicked.connect(self.fill_form)
+
+        self.load_data()
+
+    # ===== ĐỂ RA NGOÀI __init__ =====
+
+    def load_data(self):
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM employees")
+        rows = cursor.fetchall()
+        conn.close()
+        self.show_data(rows)
+
+    def show_data(self, rows):
+        self.table.setRowCount(len(rows))
+        for i, row in enumerate(rows):
+            for j, val in enumerate(row):
+                self.table.setItem(i, j, QTableWidgetItem(str(val)))
+
+    def add_staff(self):
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "INSERT INTO employees (name, phone, position) VALUES (%s,%s,%s)",
+            (self.name.text(), self.phone.text(), self.position.text())
+        )
+
+        conn.commit()
+        conn.close()
+        self.load_data()
+
+    def update_staff(self):
+        row = self.table.currentRow()
+        if row < 0:
+            return
+
+        staff_id = self.table.item(row, 0).text()
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "UPDATE employees SET name=%s, phone=%s, position=%s WHERE id=%s",
+            (self.name.text(), self.phone.text(), self.position.text(), staff_id)
+        )
+
+        conn.commit()
+        conn.close()
+        self.load_data()
+
+    def delete_staff(self):
+        row = self.table.currentRow()
+        if row < 0:
+            return
+
+        staff_id = self.table.item(row, 0).text()
+
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM employees WHERE id=%s", (staff_id,))
+        conn.commit()
+        conn.close()
+        self.load_data()
+
+    def search_staff(self):
+        keyword = self.search.text()
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT * FROM employees WHERE name LIKE %s",
+            (f"%{keyword}%",)
+        )
+
+        rows = cursor.fetchall()
+        conn.close()
+        self.show_data(rows)
+
+    def fill_form(self, row, col):
+        self.name.setText(self.table.item(row, 1).text())
+        self.phone.setText(self.table.item(row, 2).text())
+        self.position.setText(self.table.item(row, 3).text())
+
+class AccountScreen(QWidget):
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+
+        layout = QVBoxLayout()
+
+        # ===== FORM =====
+        form = QHBoxLayout()
+
+        self.username = QLineEdit()
+        self.username.setPlaceholderText("Username")
+
+        self.password = QLineEdit()
+        self.password.setPlaceholderText("Password")
+
+        self.role = QComboBox()
+        self.role.addItems(["admin", "staff"])
+
+        self.employee = QComboBox()
+
+        form.addWidget(self.username)
+        form.addWidget(self.password)
+        form.addWidget(self.role)
+        form.addWidget(self.employee)
+
+        layout.addLayout(form)
+
+        # ===== BUTTON =====
+        btn_layout = QHBoxLayout()
+
+        add_btn = QPushButton("Thêm")
+        delete_btn = QPushButton("Xoá")
+
+        btn_layout.addWidget(add_btn)
+        btn_layout.addWidget(delete_btn)
+
+        layout.addLayout(btn_layout)
+
+        # ===== TABLE =====
+        self.table = QTableWidget()
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(["ID", "User", "Role", "Nhân viên", "EmpID"])
+
+        layout.addWidget(self.table)
+
+        # BACK
+        back = QPushButton("← Quay lại")
+        back.clicked.connect(lambda: self.app.setCurrentIndex(1))
+        layout.addWidget(back)
+
+        self.setLayout(layout)
+
+        # EVENT
+        add_btn.clicked.connect(self.add_user)
+        delete_btn.clicked.connect(self.delete_user)
+
+        self.load_employees()
+        self.load_data()
+    def load_employees(self):
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT id, name FROM employees")
+        rows = cursor.fetchall()
+
+        self.employee.clear()
+        for r in rows:
+            self.employee.addItem(r[1], r[0])
+
+        conn.close()
+    def load_data(self):
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT u.id, u.username, u.role, e.name, u.employee_id
+            FROM users u
+            LEFT JOIN employees e ON u.employee_id = e.id
+        """)
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        self.table.setRowCount(len(rows))
+        for i, row in enumerate(rows):
+            for j, val in enumerate(row):
+                self.table.setItem(i, j, QTableWidgetItem(str(val)))
+    def add_user(self):
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "INSERT INTO users (username, password, role, employee_id) VALUES (%s,%s,%s,%s)",
+            (
+                self.username.text(),
+                self.password.text(),
+                self.role.currentText(),
+                self.employee.currentData()
+            )
+        )
+
+        conn.commit()
+        conn.close()
+        self.load_data()
+    def delete_user(self):
+        row = self.table.currentRow()
+        if row < 0:
+            return
+
+        user_id = self.table.item(row, 0).text()
+
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("DELETE FROM users WHERE id=%s", (user_id,))
+        conn.commit()
+        conn.close()
+
+        self.load_data()
 
 
 # ===== MAIN MENU =====
@@ -236,8 +505,17 @@ class MainWindow(QWidget):
 
         positions = [(i, j) for i in range(3) for j in range(3)]
 
+        self.buttons = {}  # 👈 THÊM DÒNG NÀY
+
         for pos, name in zip(positions, self.features):
             btn = QPushButton(name)
+
+            self.buttons[name] = btn  # 👈 THÊM DÒNG NÀY (QUAN TRỌNG)
+
+            btn.setMinimumHeight(120)
+            btn.clicked.connect(lambda _, n=name: self.open_feature(n))
+
+            grid.addWidget(btn, *pos)
             btn.setMinimumHeight(120)
             btn.setStyleSheet("""
                 QPushButton {
@@ -267,8 +545,15 @@ class MainWindow(QWidget):
         }
 
         if name == "ĐĂNG XUẤT":
-            self.app.login.clear_fields()  # xoá dữ liệu login
-            self.app.setCurrentIndex(0)  # quay về login
+            self.app.login.clear_fields()
+            self.app.setCurrentIndex(0)
+        else:
+            self.app.setCurrentIndex(mapping[name])
+
+    def set_role(self, role):
+        if role != "admin":
+            self.buttons["QUẢN LÝ NHÂN VIÊN"].hide()
+            self.buttons["QUẢN LÝ TÀI KHOẢN"].hide()
 
 
 # ===== APP =====
@@ -280,8 +565,8 @@ class App(QStackedWidget):
         self.main = MainWindow(self)
 
         self.parking = ParkingScreen(self)
-        self.staff = FeatureScreen("QUẢN LÝ NHÂN VIÊN", self)
-        self.account = FeatureScreen("QUẢN LÝ TÀI KHOẢN", self)
+        self.staff = StaffScreen(self)
+        self.account = AccountScreen(self)
         self.month = FeatureScreen("THẺ GỬI THÁNG", self)
         self.day = FeatureScreen("THẺ GỬI NGÀY", self)
         self.history = FeatureScreen("LỊCH SỬ XE", self)
@@ -301,7 +586,8 @@ class App(QStackedWidget):
 
         self.setCurrentIndex(0)
 
-    def show_main(self):
+    def show_main(self, role):
+        self.main.set_role(role)  # truyền role xuống menu
         self.setCurrentIndex(1)
 
 
@@ -310,7 +596,6 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyleSheet(STYLE)
 
-    window = App()
-    window.show()
-
-    sys.exit(app.exec())
+window = App()
+window.show()
+sys.exit(app.exec())
