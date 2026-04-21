@@ -1,7 +1,8 @@
 import sys
 from PyQt6.QtWidgets import *
 from PyQt6.QtCore import Qt
-
+from PyQt6.QtWidgets import QHeaderView, QGridLayout
+from PyQt6.QtCore import QDate, QTime, QDateTime
 #SERVICE
 from src.services import nhanvien_service, taikhoan_service, auth_service
 
@@ -524,6 +525,229 @@ class InOutScreen(QWidget):
         self.out_image_path.clear()
         self.manual_plate.clear()
 
+# ==== LỊCH SỬ XE RA VÀO ====
+class HistoryScreen(QWidget):
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+
+        layout = QVBoxLayout()
+
+        # --- TIÊU ĐỀ ---
+        title = QLabel("LỊCH SỬ XE RA / VÀO")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("font-size: 20px; font-weight: bold; margin-bottom: 10px;")
+        layout.addWidget(title)
+
+        # --- KHU VỰC TÌM KIẾM & BỘ LỌC ---
+        filter_group = QFrame()
+        filter_group.setStyleSheet("QFrame { background-color: #1c2b36; border-radius: 10px; padding: 10px; }")
+        filter_layout = QGridLayout()
+
+        # 1. Tìm theo biển số (Áp dụng cả vé ngày & tháng)
+        self.search_plate = QLineEdit()
+        self.search_plate.setPlaceholderText("Nhập biển số xe...")
+        filter_layout.addWidget(QLabel("Biển số xe:"), 0, 0)
+        filter_layout.addWidget(self.search_plate, 0, 1)
+
+        # 2. Tìm theo tên chủ xe (Chỉ áp dụng vé tháng)
+        self.search_name = QLineEdit()
+        self.search_name.setPlaceholderText("Nhập tên chủ xe (vé tháng)...")
+        filter_layout.addWidget(QLabel("Tên chủ xe:"), 0, 2)
+        filter_layout.addWidget(self.search_name, 0, 3)
+
+        # 3. Lọc theo khung giờ (Từ ngày/giờ - Đến ngày/giờ)
+        self.time_from = QDateTimeEdit(QDateTime.currentDateTime().addDays(-1))  # Mặc định là 1 ngày trước
+        self.time_from.setDisplayFormat("dd/MM/yyyy HH:mm")
+        self.time_from.setCalendarPopup(True)
+        filter_layout.addWidget(QLabel("Từ thời gian:"), 1, 0)
+        filter_layout.addWidget(self.time_from, 1, 1)
+
+        self.time_to = QDateTimeEdit(QDateTime.currentDateTime())  # Mặc định là hiện tại
+        self.time_to.setDisplayFormat("dd/MM/yyyy HH:mm")
+        self.time_to.setCalendarPopup(True)
+        filter_layout.addWidget(QLabel("Đến thời gian:"), 1, 2)
+        filter_layout.addWidget(self.time_to, 1, 3)
+
+        # Nút Tìm Kiếm & Làm mới
+        btn_layout = QHBoxLayout()
+        search_btn = QPushButton("🔍 Tìm kiếm")
+        search_btn.setStyleSheet("background-color: #2980b9;")
+        search_btn.clicked.connect(self.search_history)
+
+        refresh_btn = QPushButton("🔄 Làm mới")
+        refresh_btn.clicked.connect(self.clear_filters)
+
+        btn_layout.addWidget(search_btn)
+        btn_layout.addWidget(refresh_btn)
+        filter_layout.addLayout(btn_layout, 2, 0, 1, 4)  # Span 4 cột
+
+        filter_group.setLayout(filter_layout)
+        layout.addWidget(filter_group)
+
+        # --- BẢNG HIỂN THỊ LỊCH SỬ ---
+        self.table = QTableWidget()
+        self.table.setColumnCount(7)
+        self.table.setHorizontalHeaderLabels([
+            "ID Giao dịch", "Biển số", "Loại vé", "Tên chủ xe", "Giờ VÀO", "Giờ RA", "Thành tiền/Trạng thái"
+        ])
+        # Tự động giãn cột
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.table)
+
+        # --- NÚT QUAY LẠI ---
+        back = QPushButton("← Quay lại")
+        back.clicked.connect(lambda: self.app.setCurrentIndex(1))
+        layout.addWidget(back)
+
+        self.setLayout(layout)
+
+        # Load dữ liệu mặc định ban đầu
+        self.load_data()
+
+    # --- LOGIC XỬ LÝ ---
+    def load_data(self):
+        # TODO: Gọi hàm get_all() từ file service lịch sử (ví dụ: history_service.get_all())
+        # Dưới đây là dữ liệu giả (Mock data) để bạn hình dung
+        mock_data = [
+            ("101", "29A-12345", "Vé Tháng", "Nguyễn Văn A", "21/04/2026 07:30", "21/04/2026 18:00", "Vé hợp lệ"),
+            ("102", "30H-99999", "Vé Ngày", "", "21/04/2026 08:15", "21/04/2026 10:15", "20,000 VND"),
+            ("103", "15B-67890", "Vé Ngày", "", "21/04/2026 09:00", "Chưa ra", "Đang trong bãi"),
+        ]
+
+        self.table.setRowCount(len(mock_data))
+        for i, row in enumerate(mock_data):
+            for j, val in enumerate(row):
+                self.table.setItem(i, j, QTableWidgetItem(str(val)))
+
+    def search_history(self):
+        plate = self.search_plate.text().strip()
+        name = self.search_name.text().strip()
+        t_from = self.time_from.dateTime().toString("yyyy-MM-dd HH:mm:ss")
+        t_to = self.time_to.dateTime().toString("yyyy-MM-dd HH:mm:ss")
+
+        print(f"Đang tìm kiếm:\n- Biển: {plate}\n- Tên: {name}\n- Từ: {t_from}\n- Đến: {t_to}")
+
+        # TODO: Chuyền các tham số này vào history_service.search(plate, name, t_from, t_to)
+        # và gọi lại vòng lặp setItem cho bảng giống hàm load_data()
+
+    def clear_filters(self):
+        self.search_plate.clear()
+        self.search_name.clear()
+        self.time_to.setDateTime(QDateTime.currentDateTime())
+        self.time_from.setDateTime(QDateTime.currentDateTime().addDays(-1))
+        self.load_data()
+
+
+# ===== CÀI ĐẶT GIÁ VÉ =====
+class PriceSettingScreen(QWidget):
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+
+        layout = QVBoxLayout()
+
+        # --- TIÊU ĐỀ ---
+        title = QLabel("CẤU HÌNH ĐƠN GIÁ DỊCH VỤ")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("font-size: 20px; font-weight: bold; margin-bottom: 20px;")
+        layout.addWidget(title)
+
+        # Container cho các nhóm cài đặt
+        content_layout = QHBoxLayout()
+
+        # --- NHÓM 1: GIÁ VÉ NGÀY (TÍNH THEO GIỜ) ---
+        day_group = QGroupBox("Giá Vé Ngày (VNĐ/Giờ)")
+        day_group.setStyleSheet(
+            "QGroupBox { font-weight: bold; border: 1px solid #2c3e50; margin-top: 10px; padding: 15px; }")
+        day_layout = QFormLayout()
+
+        self.day_motor = QSpinBox()
+        self.day_motor.setRange(0, 1000000)
+        self.day_motor.setSingleStep(1000)
+        self.day_motor.setSuffix(" VNĐ")
+
+        self.day_car = QSpinBox()
+        self.day_car.setRange(0, 1000000)
+        self.day_car.setSingleStep(5000)
+        self.day_car.setSuffix(" VNĐ")
+
+        day_layout.addRow("Xe máy:", self.day_motor)
+        day_layout.addRow("Ô tô:", self.day_car)
+        day_group.setLayout(day_layout)
+
+        # --- NHÓM 2: GIÁ VÉ THÁNG (VNĐ/THÁNG) ---
+        month_group = QGroupBox("Giá Vé Tháng (VNĐ/Tháng)")
+        month_group.setStyleSheet(
+            "QGroupBox { font-weight: bold; border: 1px solid #2c3e50; margin-top: 10px; padding: 15px; }")
+        month_layout = QFormLayout()
+
+        self.month_motor = QSpinBox()
+        self.month_motor.setRange(0, 10000000)
+        self.month_motor.setSingleStep(10000)
+        self.month_motor.setSuffix(" VNĐ")
+
+        self.month_car = QSpinBox()
+        self.month_car.setRange(0, 10000000)
+        self.month_car.setSingleStep(50000)
+        self.month_car.setSuffix(" VNĐ")
+
+        month_layout.addRow("Xe máy:", self.month_motor)
+        month_layout.addRow("Ô tô:", self.month_car)
+        month_group.setLayout(month_layout)
+
+        content_layout.addWidget(day_group)
+        content_layout.addWidget(month_group)
+        layout.addLayout(content_layout)
+
+        # --- NÚT LƯU CÀI ĐẶT ---
+        save_btn = QPushButton(" LƯU THAY ĐỔI")
+        save_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f39c12; 
+                font-size: 16px; 
+                margin-top: 20px;
+                padding: 15px;
+            }
+            QPushButton:hover { background-color: #e67e22; }
+        """)
+        save_btn.clicked.connect(self.save_prices)
+        layout.addWidget(save_btn)
+
+        # Khoảng trống đẩy nút quay lại xuống dưới
+        layout.addStretch()
+
+        # --- NÚT QUAY LẠI ---
+        back = QPushButton("← Quay lại")
+        back.clicked.connect(lambda: self.app.setCurrentIndex(1))
+        layout.addWidget(back)
+
+        self.setLayout(layout)
+
+        # Load giá hiện tại từ database/file cấu hình
+        self.load_current_prices()
+
+    def load_current_prices(self):
+        # TODO: Gọi service lấy giá từ DB (ví dụ: gia_service.get_current())
+        # Dữ liệu giả định
+        self.day_motor.setValue(3000)
+        self.day_car.setValue(15000)
+        self.month_motor.setValue(100000)
+        self.month_car.setValue(1200000)
+
+    def save_prices(self):
+        # Lấy giá trị từ các ô nhập
+        prices = {
+            "day_motor": self.day_motor.value(),
+            "day_car": self.day_car.value(),
+            "month_motor": self.month_motor.value(),
+            "month_car": self.month_car.value()
+        }
+
+        # TODO: Gọi service lưu vào DB
+        print(f"Đã lưu giá mới: {prices}")
+        QMessageBox.information(self, "Thông báo", "Cập nhật đơn giá thành công!")
+
 
 # ===== MAIN MENU =====
 class MainWindow(QWidget):
@@ -576,18 +800,18 @@ class App(QStackedWidget):
 
         # placeholder cho các màn khác
         self.month = MonthlyPassScreen(self)
-        self.history = FeatureScreen("LỊCH SỬ XE", self)
-        self.price = FeatureScreen("CÀI ĐẶT GIÁ", self)
+        self.history = HistoryScreen(self)
+        self.price = PriceSettingScreen(self)
         self.report1 = FeatureScreen("THỐNG KÊ", self)
         self.inout = InOutScreen(self)
         self.addWidget(self.login)   # 0
         self.addWidget(self.main)    # 1
         self.addWidget(self.staff)   # 2
         self.addWidget(self.account) # 3
-        self.addWidget(self.month)
-        self.addWidget(self.history)
-        self.addWidget(self.price)
-        self.addWidget(self.report1)
+        self.addWidget(self.month)   #4
+        self.addWidget(self.history) #5
+        self.addWidget(self.price)   #6
+        self.addWidget(self.report1) #7
         self.addWidget(self.inout)  # 8
 
         self.setCurrentIndex(0)
