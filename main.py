@@ -4,7 +4,6 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QHeaderView, QGridLayout
 from PyQt6.QtCore import QDate, QTime, QDateTime
 
-# IMPORT SERVICES & UTILS
 from src.services import (
     nhanvien_service,
     taikhoan_service,
@@ -61,12 +60,12 @@ class LoginWindow(QWidget):
         card_layout = QVBoxLayout()
         card_layout.setSpacing(15)
 
-        # TITLE
+        #title
         title = QLabel("ĐĂNG NHẬP")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("font-size: 22px; font-weight: bold;")
 
-        # INPUT
+        #input
         self.user = QLineEdit()
         self.user.setPlaceholderText("Username")
 
@@ -74,7 +73,7 @@ class LoginWindow(QWidget):
         self.pw.setEchoMode(QLineEdit.EchoMode.Password)
         self.pw.setPlaceholderText("Password")
 
-        # BUTTON
+        #button
         btn = QPushButton("ĐĂNG NHẬP")
         btn.setStyleSheet("""
             QPushButton {
@@ -93,11 +92,10 @@ class LoginWindow(QWidget):
 
         btn.clicked.connect(self.login)
 
-        # ENTER để login
         self.user.returnPressed.connect(self.login)
         self.pw.returnPressed.connect(self.login)
 
-        # ADD
+        #thêm layout
         card_layout.addWidget(title)
         card_layout.addWidget(self.user)
         card_layout.addWidget(self.pw)
@@ -111,11 +109,9 @@ class LoginWindow(QWidget):
     def login(self):
         result = auth_service.login(self.user.text(), self.pw.text())
 
-        print(f"DEBUG: Kết quả từ DB: {result}")  # Xem nó ra cái gì
+        print(f"DEBUG: Kết quả từ DB: {result}")
 
         if result:
-            # Vì fetchone() trả về tuple (ví dụ: ('admin',))
-            # nên ta lấy phần tử đầu tiên result[0]
             role = result[0]
             print(f"DEBUG: Role lấy được: {role}")
             self.switch_to_main(role)
