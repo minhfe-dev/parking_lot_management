@@ -3,9 +3,18 @@ from PyQt6.QtWidgets import *
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QHeaderView, QGridLayout
 from PyQt6.QtCore import QDate, QTime, QDateTime
-#SERVICE
-from src.services import nhanvien_service, taikhoan_service, auth_service
 
+# IMPORT SERVICES & UTILS
+from src.services import (
+    nhanvien_service,
+    taikhoan_service,
+    auth_service,
+    theguithang_service,
+    ravao_service,
+    lichsu_service,
+    gia_service
+)
+from src.utils import img_processing
 
 STYLE = """
 QWidget {
@@ -99,17 +108,19 @@ class LoginWindow(QWidget):
 
         self.setLayout(layout)
 
-    # CHỈ THAY LOGIC Ở ĐÂY
     def login(self):
-        result = auth_service.login(
-            self.user.text(),
-            self.pw.text()
-        )
+        result = auth_service.login(self.user.text(), self.pw.text())
+
+        print(f"DEBUG: Kết quả từ DB: {result}")  # Xem nó ra cái gì
 
         if result:
+            # Vì fetchone() trả về tuple (ví dụ: ('admin',))
+            # nên ta lấy phần tử đầu tiên result[0]
             role = result[0]
+            print(f"DEBUG: Role lấy được: {role}")
             self.switch_to_main(role)
         else:
+            print("DEBUG: Đăng nhập thất bại (result is None)")
             QMessageBox.warning(self, "Lỗi", "Sai tài khoản hoặc mật khẩu!")
 
     def clear_fields(self):
@@ -146,7 +157,7 @@ class StaffScreen(QWidget):
         self.name = QLineEdit()
         self.name.setPlaceholderText("Nhập họ và tên: ")
         self.phone = QLineEdit()
-        self.phone.setPlaceholderText("Nhập mật khẩu: ")
+        self.phone.setPlaceholderText("Nhập số điện thoại: ")
         self.position = QLineEdit()
         self.position.setPlaceholderText("Chức vụ: ")
 
@@ -155,6 +166,7 @@ class StaffScreen(QWidget):
         delete_btn = QPushButton("Xoá")
 
         self.search = QLineEdit()
+        self.search.setPlaceholderText("Nhập họ tên hoặc số điện thoại")
         search_btn = QPushButton("Tìm")
 
         self.table = QTableWidget()
@@ -195,19 +207,16 @@ class StaffScreen(QWidget):
     def add_staff(self):
         nhanvien_service.add(self.name.text(), self.phone.text(), self.position.text())
         self.load_data()
+        self.clear_inputs()
 
     def update_staff(self):
         row = self.table.currentRow()
         if row < 0: return
         staff_id = self.table.item(row, 0).text()
 
-        nhanvien_service.update(
-            staff_id,
-            self.name.text(),
-            self.phone.text(),
-            self.position.text()
-        )
+        nhanvien_service.update(staff_id, self.name.text(), self.phone.text(), self.position.text())
         self.load_data()
+        self.clear_inputs()
 
     def delete_staff(self):
         row = self.table.currentRow()
@@ -216,6 +225,7 @@ class StaffScreen(QWidget):
 
         nhanvien_service.delete(staff_id)
         self.load_data()
+        self.clear_inputs()
 
     def search_staff(self):
         rows = nhanvien_service.search(self.search.text())
@@ -228,6 +238,11 @@ class StaffScreen(QWidget):
         self.name.setText(self.table.item(row, 1).text())
         self.phone.setText(self.table.item(row, 2).text())
         self.position.setText(self.table.item(row, 3).text())
+
+    def clear_inputs(self):
+        self.name.clear()
+        self.phone.clear()
+        self.position.clear()
 
 
 # ===== ACCOUNT =====
@@ -253,6 +268,7 @@ class AccountScreen(QWidget):
 
         self.table = QTableWidget()
         self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(["ID", "Username", "Password", "Quyền", "ID Nhân Viên"])
 
         layout.addWidget(self.username)
         layout.addWidget(self.password)
@@ -295,6 +311,8 @@ class AccountScreen(QWidget):
             self.employee.currentData()
         )
         self.load_data()
+        self.username.clear()
+        self.password.clear()
 
     def delete_user(self):
         row = self.table.currentRow()
@@ -313,13 +331,11 @@ class MonthlyPassScreen(QWidget):
 
         layout = QVBoxLayout()
 
-        # --- TIÊU ĐỀ ---
         title = QLabel("QUẢN LÝ THẺ GỬI THÁNG")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setStyleSheet("font-size: 20px; font-weight: bold; margin-bottom: 10px;")
         layout.addWidget(title)
 
-        # --- KHU VỰC NHẬP LIỆU ---
         form_layout = QFormLayout()
 
         self.customer_name = QLineEdit()
@@ -329,14 +345,13 @@ class MonthlyPassScreen(QWidget):
         self.license_plate.setPlaceholderText("Nhập biển số xe...")
 
         self.vehicle_type = QComboBox()
-        self.vehicle_type.addItems(["Xe máy", "Ô tô"])  # Phân loại xe
+        self.vehicle_type.addItems(["Xe máy", "Ô tô"])
 
-        self.duration = QSpinBox()  # Ô chọn số lượng (tháng)
+        self.duration = QSpinBox()
         self.duration.setMinimum(1)
         self.duration.setMaximum(24)
         self.duration.setSuffix(" tháng")
 
-        # Thêm các field vào form
         form_layout.addRow("Tên khách hàng:", self.customer_name)
         form_layout.addRow("Biển số xe:", self.license_plate)
         form_layout.addRow("Loại phương tiện:", self.vehicle_type)
@@ -344,8 +359,7 @@ class MonthlyPassScreen(QWidget):
 
         layout.addLayout(form_layout)
 
-        # --- KHU VỰC NÚT CHỨC NĂNG ---
-        btn_layout = QHBoxLayout()  # Xếp các nút nằm ngang
+        btn_layout = QHBoxLayout()
 
         register_btn = QPushButton("Đăng ký vé mới")
         extend_btn = QPushButton("Gia hạn vé")
@@ -357,45 +371,79 @@ class MonthlyPassScreen(QWidget):
 
         layout.addLayout(btn_layout)
 
-        # --- BẢNG HIỂN THỊ DỮ LIỆU ---
         self.table = QTableWidget()
         self.table.setColumnCount(6)
         self.table.setHorizontalHeaderLabels(
             ["ID Thẻ", "Khách hàng", "Biển số", "Loại xe", "Ngày hết hạn", "Trạng thái"])
 
-        # Giãn cột cuối cho vừa màn hình
         self.table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.table)
 
-        # --- NÚT QUAY LẠI ---
         back = QPushButton("← Quay lại")
         back.clicked.connect(lambda: self.app.setCurrentIndex(1))
         layout.addWidget(back)
 
         self.setLayout(layout)
 
-        # Kết nối sự kiện cho các nút (Bạn sẽ cần viết logic xử lý DB sau)
         register_btn.clicked.connect(self.register_pass)
         extend_btn.clicked.connect(self.extend_pass)
         cancel_btn.clicked.connect(self.cancel_pass)
 
-    # --- CÁC HÀM XỬ LÝ LOGIC (Placeholder) ---
+        self.load_data()
+
+    def load_data(self):
+        rows = theguithang_service.get_all()
+        self.table.setRowCount(len(rows))
+        for i, row in enumerate(rows):
+            for j, val in enumerate(row):
+                self.table.setItem(i, j, QTableWidgetItem(str(val)))
+
     def register_pass(self):
-        # Lấy dữ liệu từ form để test
-        name = self.customer_name.text()
-        plate = self.license_plate.text()
-        v_type = self.vehicle_type.currentText()
-        months = self.duration.value()
-        print(f"Đăng ký: {name} | Biển: {plate} | Loại: {v_type} | Số tháng: {months}")
-        # TODO: Gọi file service (vd: thethang_service.add(...)) và load lại bảng
+        success, msg = theguithang_service.add(
+            self.customer_name.text(),
+            self.license_plate.text(),
+            self.vehicle_type.currentText(),
+            self.duration.value()
+        )
+        if success:
+            self.load_data()
+            self.clear_inputs()
+            QMessageBox.information(self, "Thành công", msg)
+        else:
+            QMessageBox.warning(self, "Lỗi", msg)
 
     def extend_pass(self):
-        print("Gia hạn thẻ...")
-        # TODO: Lấy ID từ dòng đang chọn trên bảng và gọi service update ngày hết hạn
+        row = self.table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Cảnh báo", "Vui lòng chọn thẻ cần gia hạn!")
+            return
+
+        card_id = self.table.item(row, 0).text()
+        success, msg = theguithang_service.extend(card_id, self.duration.value())
+        if success:
+            self.load_data()
+            QMessageBox.information(self, "Thành công", msg)
+        else:
+            QMessageBox.warning(self, "Lỗi", msg)
 
     def cancel_pass(self):
-        print("Hủy thẻ...")
-        # TODO: Lấy ID từ dòng đang chọn và gọi service đổi trạng thái thành "Đã hủy"
+        row = self.table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Cảnh báo", "Vui lòng chọn thẻ cần hủy!")
+            return
+
+        card_id = self.table.item(row, 0).text()
+        success, msg = theguithang_service.cancel(card_id)
+        if success:
+            self.load_data()
+            QMessageBox.information(self, "Thành công", msg)
+        else:
+            QMessageBox.warning(self, "Lỗi", msg)
+
+    def clear_inputs(self):
+        self.customer_name.clear()
+        self.license_plate.clear()
+        self.duration.setValue(1)
 
 
 # ===== HỆ THỐNG VÀO / RA =====
@@ -417,7 +465,7 @@ class InOutScreen(QWidget):
 
         # 1. Lối Vào
         in_layout = QVBoxLayout()
-        in_label = QLabel("📷 Đường dẫn ảnh LỐI VÀO:")
+        in_label = QLabel(" Đường dẫn ảnh LỐI VÀO:")
         self.in_image_path = QLineEdit()
         self.in_image_path.setPlaceholderText("Nhập hoặc chọn ảnh xe vào...")
 
@@ -433,7 +481,7 @@ class InOutScreen(QWidget):
 
         # 2. Lối Ra
         out_layout = QVBoxLayout()
-        out_label = QLabel("📷 Đường dẫn ảnh LỐI RA:")
+        out_label = QLabel(" Đường dẫn ảnh LỐI RA:")
         self.out_image_path = QLineEdit()
         self.out_image_path.setPlaceholderText("Nhập hoặc chọn ảnh xe ra...")
 
@@ -462,10 +510,10 @@ class InOutScreen(QWidget):
         # --- NÚT CHỨC NĂNG VÀO / RA ---
         btn_layout = QHBoxLayout()
 
-        self.btn_in = QPushButton("⬇ CHO XE VÀO")
+        self.btn_in = QPushButton("CHO XE VÀO")
         self.btn_in.setStyleSheet("background-color: #27ae60; font-size: 16px; padding: 15px;")
 
-        self.btn_out = QPushButton("⬆ CHO XE RA")
+        self.btn_out = QPushButton("CHO XE RA")
         self.btn_out.setStyleSheet("background-color: #e74c3c; font-size: 16px; padding: 15px;")
 
         btn_layout.addWidget(self.btn_in)
@@ -490,40 +538,58 @@ class InOutScreen(QWidget):
         self.btn_in.clicked.connect(self.process_entry)
         self.btn_out.clicked.connect(self.process_exit)
 
-    # --- CÁC HÀM XỬ LÝ LÔ-GIC ---
     def browse_image(self, line_edit):
-        # Mở hộp thoại chọn file ảnh
         fname, _ = QFileDialog.getOpenFileName(self, "Chọn ảnh biển số", "", "Images (*.png *.jpg *.jpeg)")
         if fname:
             line_edit.setText(fname)
-            self.log_area.append(f"Đã tải ảnh: {fname}. Đang đọc OCR...")
-            # Giả lập OCR đọc thành công và gán vào ô nhập thủ công
-            self.manual_plate.setText("30A-12345")
+            self.log_area.append(f"Đang xử lý ảnh: {fname}...")
+            QApplication.processEvents()  # Cập nhật UI trước khi chạy AI
+
+            plate_number = img_processing.extract_plate(fname)
+
+            if plate_number:
+                self.manual_plate.setText(plate_number)
+                self.log_area.append(f"✓ Nhận diện thành công: {plate_number}")
+            else:
+                self.log_area.append("✗ Lỗi: Không thể nhận diện biển số từ ảnh này!")
 
     def process_entry(self):
         plate = self.manual_plate.text().strip()
+        img_path = self.in_image_path.text().strip()
+
         if not plate:
             QMessageBox.warning(self, "Cảnh báo", "Vui lòng scan ảnh hoặc nhập biển số!")
             return
 
-        # TODO: Gọi DB lưu thông tin xe vào
-        self.log_area.append(f"✅ [VÀO BÃI] - Xe mang biển số {plate} đã vào.")
-        self.clear_inputs()
+        success, msg = ravao_service.process_entry(plate, img_path)
+
+        if success:
+            self.log_area.append(f" [VÀO BÃI] - {msg}")
+            self.clear_inputs()
+        else:
+            self.log_area.append(f" [LỖI VÀO] - {msg}")
 
     def process_exit(self):
         plate = self.manual_plate.text().strip()
+        img_path = self.out_image_path.text().strip()
+
         if not plate:
             QMessageBox.warning(self, "Cảnh báo", "Vui lòng scan ảnh hoặc nhập biển số!")
             return
 
-        # TODO: Kiểm tra DB, tính tiền và cho xe ra
-        self.log_area.append(f"📤 [RỜI BÃI] - Xe mang biển số {plate} đã ra.")
-        self.clear_inputs()
+        success, msg = ravao_service.process_exit(plate, img_path)
+
+        if success:
+            self.log_area.append(f" [RỜI BÃI] - {msg}")
+            self.clear_inputs()
+        else:
+            self.log_area.append(f" [LỖI RA] - {msg}")
 
     def clear_inputs(self):
         self.in_image_path.clear()
         self.out_image_path.clear()
         self.manual_plate.clear()
+
 
 # ==== LỊCH SỬ XE RA VÀO ====
 class HistoryScreen(QWidget):
@@ -544,43 +610,39 @@ class HistoryScreen(QWidget):
         filter_group.setStyleSheet("QFrame { background-color: #1c2b36; border-radius: 10px; padding: 10px; }")
         filter_layout = QGridLayout()
 
-        # 1. Tìm theo biển số (Áp dụng cả vé ngày & tháng)
         self.search_plate = QLineEdit()
         self.search_plate.setPlaceholderText("Nhập biển số xe...")
         filter_layout.addWidget(QLabel("Biển số xe:"), 0, 0)
         filter_layout.addWidget(self.search_plate, 0, 1)
 
-        # 2. Tìm theo tên chủ xe (Chỉ áp dụng vé tháng)
         self.search_name = QLineEdit()
         self.search_name.setPlaceholderText("Nhập tên chủ xe (vé tháng)...")
         filter_layout.addWidget(QLabel("Tên chủ xe:"), 0, 2)
         filter_layout.addWidget(self.search_name, 0, 3)
 
-        # 3. Lọc theo khung giờ (Từ ngày/giờ - Đến ngày/giờ)
-        self.time_from = QDateTimeEdit(QDateTime.currentDateTime().addDays(-1))  # Mặc định là 1 ngày trước
+        self.time_from = QDateTimeEdit(QDateTime.currentDateTime().addDays(-1))
         self.time_from.setDisplayFormat("dd/MM/yyyy HH:mm")
         self.time_from.setCalendarPopup(True)
         filter_layout.addWidget(QLabel("Từ thời gian:"), 1, 0)
         filter_layout.addWidget(self.time_from, 1, 1)
 
-        self.time_to = QDateTimeEdit(QDateTime.currentDateTime())  # Mặc định là hiện tại
+        self.time_to = QDateTimeEdit(QDateTime.currentDateTime())
         self.time_to.setDisplayFormat("dd/MM/yyyy HH:mm")
         self.time_to.setCalendarPopup(True)
         filter_layout.addWidget(QLabel("Đến thời gian:"), 1, 2)
         filter_layout.addWidget(self.time_to, 1, 3)
 
-        # Nút Tìm Kiếm & Làm mới
         btn_layout = QHBoxLayout()
-        search_btn = QPushButton("🔍 Tìm kiếm")
+        search_btn = QPushButton(" Tìm kiếm")
         search_btn.setStyleSheet("background-color: #2980b9;")
         search_btn.clicked.connect(self.search_history)
 
-        refresh_btn = QPushButton("🔄 Làm mới")
+        refresh_btn = QPushButton(" Làm mới")
         refresh_btn.clicked.connect(self.clear_filters)
 
         btn_layout.addWidget(search_btn)
         btn_layout.addWidget(refresh_btn)
-        filter_layout.addLayout(btn_layout, 2, 0, 1, 4)  # Span 4 cột
+        filter_layout.addLayout(btn_layout, 2, 0, 1, 4)
 
         filter_group.setLayout(filter_layout)
         layout.addWidget(filter_group)
@@ -591,7 +653,6 @@ class HistoryScreen(QWidget):
         self.table.setHorizontalHeaderLabels([
             "ID Giao dịch", "Biển số", "Loại vé", "Tên chủ xe", "Giờ VÀO", "Giờ RA", "Thành tiền/Trạng thái"
         ])
-        # Tự động giãn cột
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.table)
 
@@ -601,22 +662,12 @@ class HistoryScreen(QWidget):
         layout.addWidget(back)
 
         self.setLayout(layout)
-
-        # Load dữ liệu mặc định ban đầu
         self.load_data()
 
-    # --- LOGIC XỬ LÝ ---
     def load_data(self):
-        # TODO: Gọi hàm get_all() từ file service lịch sử (ví dụ: history_service.get_all())
-        # Dưới đây là dữ liệu giả (Mock data) để bạn hình dung
-        mock_data = [
-            ("101", "29A-12345", "Vé Tháng", "Nguyễn Văn A", "21/04/2026 07:30", "21/04/2026 18:00", "Vé hợp lệ"),
-            ("102", "30H-99999", "Vé Ngày", "", "21/04/2026 08:15", "21/04/2026 10:15", "20,000 VND"),
-            ("103", "15B-67890", "Vé Ngày", "", "21/04/2026 09:00", "Chưa ra", "Đang trong bãi"),
-        ]
-
-        self.table.setRowCount(len(mock_data))
-        for i, row in enumerate(mock_data):
+        rows = lichsu_service.get_all()
+        self.table.setRowCount(len(rows))
+        for i, row in enumerate(rows):
             for j, val in enumerate(row):
                 self.table.setItem(i, j, QTableWidgetItem(str(val)))
 
@@ -626,10 +677,12 @@ class HistoryScreen(QWidget):
         t_from = self.time_from.dateTime().toString("yyyy-MM-dd HH:mm:ss")
         t_to = self.time_to.dateTime().toString("yyyy-MM-dd HH:mm:ss")
 
-        print(f"Đang tìm kiếm:\n- Biển: {plate}\n- Tên: {name}\n- Từ: {t_from}\n- Đến: {t_to}")
+        rows = lichsu_service.search(plate, name, t_from, t_to)
 
-        # TODO: Chuyền các tham số này vào history_service.search(plate, name, t_from, t_to)
-        # và gọi lại vòng lặp setItem cho bảng giống hàm load_data()
+        self.table.setRowCount(len(rows))
+        for i, row in enumerate(rows):
+            for j, val in enumerate(row):
+                self.table.setItem(i, j, QTableWidgetItem(str(val)))
 
     def clear_filters(self):
         self.search_plate.clear()
@@ -653,10 +706,9 @@ class PriceSettingScreen(QWidget):
         title.setStyleSheet("font-size: 20px; font-weight: bold; margin-bottom: 20px;")
         layout.addWidget(title)
 
-        # Container cho các nhóm cài đặt
         content_layout = QHBoxLayout()
 
-        # --- NHÓM 1: GIÁ VÉ NGÀY (TÍNH THEO GIỜ) ---
+        # ---GIÁ VÉ NGÀY ---
         day_group = QGroupBox("Giá Vé Ngày (VNĐ/Giờ)")
         day_group.setStyleSheet(
             "QGroupBox { font-weight: bold; border: 1px solid #2c3e50; margin-top: 10px; padding: 15px; }")
@@ -676,7 +728,7 @@ class PriceSettingScreen(QWidget):
         day_layout.addRow("Ô tô:", self.day_car)
         day_group.setLayout(day_layout)
 
-        # --- NHÓM 2: GIÁ VÉ THÁNG (VNĐ/THÁNG) ---
+        # ---GIÁ VÉ THÁNG ---
         month_group = QGroupBox("Giá Vé Tháng (VNĐ/Tháng)")
         month_group.setStyleSheet(
             "QGroupBox { font-weight: bold; border: 1px solid #2c3e50; margin-top: 10px; padding: 15px; }")
@@ -714,7 +766,6 @@ class PriceSettingScreen(QWidget):
         save_btn.clicked.connect(self.save_prices)
         layout.addWidget(save_btn)
 
-        # Khoảng trống đẩy nút quay lại xuống dưới
         layout.addStretch()
 
         # --- NÚT QUAY LẠI ---
@@ -723,20 +774,16 @@ class PriceSettingScreen(QWidget):
         layout.addWidget(back)
 
         self.setLayout(layout)
-
-        # Load giá hiện tại từ database/file cấu hình
         self.load_current_prices()
 
     def load_current_prices(self):
-        # TODO: Gọi service lấy giá từ DB (ví dụ: gia_service.get_current())
-        # Dữ liệu giả định
-        self.day_motor.setValue(3000)
-        self.day_car.setValue(15000)
-        self.month_motor.setValue(100000)
-        self.month_car.setValue(1200000)
+        prices = gia_service.get_current_prices()
+        self.day_motor.setValue(prices.get("day_motor", 0))
+        self.day_car.setValue(prices.get("day_car", 0))
+        self.month_motor.setValue(prices.get("month_motor", 0))
+        self.month_car.setValue(prices.get("month_car", 0))
 
     def save_prices(self):
-        # Lấy giá trị từ các ô nhập
         prices = {
             "day_motor": self.day_motor.value(),
             "day_car": self.day_car.value(),
@@ -744,9 +791,11 @@ class PriceSettingScreen(QWidget):
             "month_car": self.month_car.value()
         }
 
-        # TODO: Gọi service lưu vào DB
-        print(f"Đã lưu giá mới: {prices}")
-        QMessageBox.information(self, "Thông báo", "Cập nhật đơn giá thành công!")
+        success, message = gia_service.update_prices(prices)
+        if success:
+            QMessageBox.information(self, "Thông báo", message)
+        else:
+            QMessageBox.critical(self, "Lỗi", message)
 
 
 # ===== MAIN MENU =====
@@ -793,32 +842,32 @@ class App(QStackedWidget):
     def __init__(self):
         super().__init__()
 
-        self.login = LoginWindow(self.show_main)
-        self.main = MainWindow(self)
-        self.staff = StaffScreen(self)
-        self.account = AccountScreen(self)
+        self.login_screen = LoginWindow(self.show_main)
+        self.main_screen = MainWindow(self)
+        self.staff_screen = StaffScreen(self)
+        self.account_screen = AccountScreen(self)
+        self.month_screen = MonthlyPassScreen(self)
+        self.history_screen = HistoryScreen(self)
+        self.price_screen = PriceSettingScreen(self)
+        self.report_screen = FeatureScreen("THỐNG KÊ", self)
+        self.inout_screen = InOutScreen(self)
 
-        # placeholder cho các màn khác
-        self.month = MonthlyPassScreen(self)
-        self.history = HistoryScreen(self)
-        self.price = PriceSettingScreen(self)
-        self.report1 = FeatureScreen("THỐNG KÊ", self)
-        self.inout = InOutScreen(self)
-        self.addWidget(self.login)   # 0
-        self.addWidget(self.main)    # 1
-        self.addWidget(self.staff)   # 2
-        self.addWidget(self.account) # 3
-        self.addWidget(self.month)   #4
-        self.addWidget(self.history) #5
-        self.addWidget(self.price)   #6
-        self.addWidget(self.report1) #7
-        self.addWidget(self.inout)  # 8
+
+        self.addWidget(self.login_screen)  # Index 0
+        self.addWidget(self.main_screen)  # Index 1
+        self.addWidget(self.staff_screen)  # Index 2
+        self.addWidget(self.account_screen)  # Index 3
+        self.addWidget(self.month_screen)  # Index 4
+        self.addWidget(self.history_screen)  # Index 5
+        self.addWidget(self.price_screen)  # Index 6
+        self.addWidget(self.report_screen)  # Index 7
+        self.addWidget(self.inout_screen)  # Index 8
 
         self.setCurrentIndex(0)
 
     def show_main(self, role):
+        print(f"Đăng nhập thành công với quyền: {role}")
         self.setCurrentIndex(1)
-
 
 # ===== RUN =====
 if __name__ == "__main__":
