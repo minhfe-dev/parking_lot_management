@@ -498,7 +498,7 @@ class InOutScreen(QWidget):
         # --- KHU VỰC NHẬP THỦ CÔNG ---
         manual_layout = QFormLayout()
         self.manual_plate = QLineEdit()
-        self.manual_plate.setPlaceholderText("VD: 29A-123.45")
+        self.manual_plate.setPlaceholderText("Nhập biển số xe tại đây...")
         self.manual_plate.setStyleSheet("font-size: 16px; padding: 8px;")
         manual_layout.addRow("Nhập biển số thủ công (Nếu lỗi ảnh):", self.manual_plate)
         layout.addLayout(manual_layout)
@@ -800,6 +800,7 @@ class MainWindow(QWidget):
         super().__init__()
         self.app = app
 
+        main_layout = QVBoxLayout()
         grid = QGridLayout()
 
         features = [
@@ -817,7 +818,25 @@ class MainWindow(QWidget):
             btn.clicked.connect(lambda _, n=name: self.open_feature(n))
             grid.addWidget(btn, i // 3, i % 3)
 
-        self.setLayout(grid)
+        main_layout.addLayout(grid)
+
+        # ===== ĐĂNG XUẤT =====
+        logout_btn = QPushButton("ĐĂNG XUẤT")
+        logout_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #e74c3c;
+                font-weight: bold;
+                padding: 12px;
+            }
+            QPushButton:hover {
+                background-color: #c0392b;
+            }
+        """)
+        logout_btn.clicked.connect(self.logout)
+
+        main_layout.addWidget(logout_btn)
+
+        self.setLayout(main_layout)
 
     def open_feature(self, name):
         mapping = {
@@ -831,6 +850,17 @@ class MainWindow(QWidget):
         }
         if name in mapping:
             self.app.setCurrentIndex(mapping[name])
+
+    def logout(self):
+        reply = QMessageBox.question(
+            self,
+            "Xác nhận",
+            "Bạn có chắc muốn đăng xuất?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            self.app.logout()
 
 
 # ===== APP =====
@@ -865,6 +895,9 @@ class App(QStackedWidget):
         print(f"Đăng nhập thành công với quyền: {role}")
         self.setCurrentIndex(1)
 
+    def logout(self):
+        self.login_screen.clear_fields()
+        self.setCurrentIndex(0)
 # ===== RUN =====
 if __name__ == "__main__":
     app = QApplication(sys.argv)
