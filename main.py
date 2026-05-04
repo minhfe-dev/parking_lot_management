@@ -21,24 +21,44 @@ QWidget {
     color: white;
     font-family: Segoe UI;
 }
-/*bo tròn các button*/
+
+/* BUTTON */
 QPushButton {
-    padding: 12px;
-    border-radius: 18px;
+    padding: 10px;
+    border-radius: 12px;
     background-color: #1c2b36;
     color: white;
     font-weight: bold;
     border: 1px solid #2c3e50;
 }
 
-/* hover */
 QPushButton:hover {
     background-color: #2c3e50;
 }
 
-/* click */
 QPushButton:pressed {
     background-color: #34495e;
+}
+
+/* INPUT */
+QLineEdit, QComboBox, QSpinBox {
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid #2c3e50;
+    background-color: #1c2b36;
+}
+
+/* TABLE */
+QTableWidget {
+    background-color: #1c2b36;
+    border-radius: 10px;
+    gridline-color: #2c3e50;
+}
+
+QHeaderView::section {
+    background-color: #2c3e50;
+    padding: 5px;
+    border: none;
 }
 """
 
@@ -77,16 +97,12 @@ class LoginWindow(QWidget):
         btn = QPushButton("ĐĂNG NHẬP")
         btn.setStyleSheet("""
             QPushButton {
-                background-color: #3498db;
-                border-radius: 12px;
-                font-weight: bold;
-                color: white;
+                text-align: left;
+                padding: 12px;
+                border-radius: 8px;
             }
             QPushButton:hover {
-                background-color: #2980b9;
-            }
-            QPushButton:pressed {
-                background-color: #1f618d;
+                background-color: #2c3e50;
             }
         """)
 
@@ -264,7 +280,7 @@ class AccountScreen(QWidget):
 
         self.table = QTableWidget()
         self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels(["ID", "Username", "Password", "Quyền", "ID Nhân Viên"])
+        self.table.setHorizontalHeaderLabels(["ID", "Username", "Password", "Quyền"])
 
         layout.addWidget(self.username)
         layout.addWidget(self.password)
@@ -800,56 +816,91 @@ class MainWindow(QWidget):
         super().__init__()
         self.app = app
 
-        main_layout = QVBoxLayout()
-        grid = QGridLayout()
+        main_layout = QHBoxLayout()
+        main_layout.setContentsMargins(0, 0, 0, 0)
 
-        features = [
-            "HỆ THỐNG XE VÀO/RA",
-            "QUẢN LÝ NHÂN VIÊN",
-            "QUẢN LÝ TÀI KHOẢN",
-            "THẺ GỬI THÁNG",
-            "LỊCH SỬ XE",
-            "CÀI ĐẶT GIÁ",
-            "THỐNG KÊ"
+        # ===== SIDEBAR =====
+        sidebar = QFrame()
+        sidebar.setFixedWidth(220)
+        sidebar.setStyleSheet("""
+            QFrame {
+                background-color: #111b24;
+            }
+            QPushButton {
+                text-align: left;
+                padding: 12px;
+                border-radius: 8px;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #2c3e50;
+            }
+        """)
+
+        side_layout = QVBoxLayout()
+
+        title = QLabel("🚗 PARKING")
+        title.setStyleSheet("font-size: 18px; font-weight: bold; padding: 10px;")
+        side_layout.addWidget(title)
+
+        # MENU
+        self.buttons = {}
+        menu_items = [
+            ("🚪 Vào / Ra", 8),
+            ("👨‍💼 Nhân viên", 2),
+            ("🔐 Tài khoản", 3),
+            ("🪪 Vé tháng", 4),
+            ("📜 Lịch sử", 5),
+            ("💰 Giá vé", 6),
+            ("📊 Thống kê", 7),
         ]
 
-        for i, name in enumerate(features):
-            btn = QPushButton(name)
-            btn.clicked.connect(lambda _, n=name: self.open_feature(n))
-            grid.addWidget(btn, i // 3, i % 3)
+        for text, index in menu_items:
+            btn = QPushButton(text)
+            btn.clicked.connect(lambda _, i=index: self.switch(i))
+            side_layout.addWidget(btn)
+            self.buttons[index] = btn
 
-        main_layout.addLayout(grid)
+        side_layout.addStretch()
 
-        # ===== ĐĂNG XUẤT =====
-        logout_btn = QPushButton("ĐĂNG XUẤT")
+        # LOGOUT
+        logout_btn = QPushButton("🚪 Đăng xuất")
         logout_btn.setStyleSheet("""
             QPushButton {
                 background-color: #e74c3c;
-                font-weight: bold;
-                padding: 12px;
-            }
-            QPushButton:hover {
-                background-color: #c0392b;
             }
         """)
         logout_btn.clicked.connect(self.logout)
 
-        main_layout.addWidget(logout_btn)
+        side_layout.addWidget(logout_btn)
+        sidebar.setLayout(side_layout)
+
+        # ===== CONTENT =====
+        content = QFrame()
+        content.setStyleSheet("background-color: #0f2027;")
+
+        content_layout = QVBoxLayout()
+
+        self.content_title = QLabel("DASHBOARD")
+        self.content_title.setStyleSheet("font-size: 24px; font-weight: bold;")
+        content_layout.addWidget(self.content_title)
+
+        content_layout.addStretch()
+        content.setLayout(content_layout)
+
+        # ===== ADD =====
+        main_layout.addWidget(sidebar)
+        main_layout.addWidget(content)
 
         self.setLayout(main_layout)
 
-    def open_feature(self, name):
-        mapping = {
-            "QUẢN LÝ NHÂN VIÊN": 2,
-            "QUẢN LÝ TÀI KHOẢN": 3,
-            "THẺ GỬI THÁNG": 4,
-            "LỊCH SỬ XE": 5,
-            "CÀI ĐẶT GIÁ": 6,
-            "THỐNG KÊ": 7,
-            "HỆ THỐNG XE VÀO/RA": 8
-        }
-        if name in mapping:
-            self.app.setCurrentIndex(mapping[name])
+    def switch(self, index):
+        for i, btn in self.buttons.items():
+            if i == index:
+                btn.setStyleSheet("background-color: #3498db;")
+            else:
+                btn.setStyleSheet("")
+        self.app.setCurrentIndex(index)
 
     def logout(self):
         reply = QMessageBox.question(
@@ -858,7 +909,6 @@ class MainWindow(QWidget):
             "Bạn có chắc muốn đăng xuất?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
-
         if reply == QMessageBox.StandardButton.Yes:
             self.app.logout()
 
