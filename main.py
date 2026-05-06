@@ -516,7 +516,10 @@ class InOutScreen(QWidget):
         self.manual_plate = QLineEdit()
         self.manual_plate.setPlaceholderText("Nhập biển số xe tại đây...")
         self.manual_plate.setStyleSheet("font-size: 16px; padding: 8px;")
+        self.vehicle_type = QComboBox()
+        self.vehicle_type.addItems(["Xe máy", "Ô tô"])
         manual_layout.addRow("Nhập biển số thủ công (Nếu lỗi ảnh):", self.manual_plate)
+        manual_layout.addRow("Loại xe (khi vào):", self.vehicle_type)
         layout.addLayout(manual_layout)
 
         # --- NÚT CHỨC NĂNG VÀO / RA ---
@@ -559,13 +562,14 @@ class InOutScreen(QWidget):
     def process_entry(self):
         img_path = self.in_image_path.text().strip()
         plate = self.manual_plate.text().strip()
+        vehicle_type = self.vehicle_type.currentText()
 
         if img_path:
             self.log_area.append(f"Đang nhận diện biển số từ ảnh vào: {img_path}...")
             QApplication.processEvents()
-            detected_plate = img_processing.extract_plate(img_path)
-            if detected_plate:
-                plate = detected_plate
+            detected_result = img_processing.extract_plate(img_path)
+            if detected_result:
+                plate = getattr(detected_result, "corrected", str(detected_result))
                 self.manual_plate.setText(plate)
                 self.log_area.append(f"✓ Nhận diện biển số thành công: {plate}")
             else:
@@ -575,11 +579,11 @@ class InOutScreen(QWidget):
             QMessageBox.warning(self, "Cảnh báo", "Không đọc được biển số từ ảnh. Vui lòng nhập biển số thủ công!")
             return
 
-        success, msg = ravao_service.process_entry(plate, img_path)
+        success, msg = ravao_service.process_entry(plate, img_path, vehicle_type)
 
         if success:
             self.log_area.append(f" [VÀO BÃI] - {msg}")
-            QMessageBox.information(self, "Thông báo", f"Xe biển số {plate} đã vào bãi.")
+            QMessageBox.information(self, "Thông báo", f"{vehicle_type} biển số {plate} đã vào bãi.")
             self.clear_inputs()
         else:
             self.log_area.append(f" [LỖI VÀO] - {msg}")
@@ -591,9 +595,9 @@ class InOutScreen(QWidget):
         if img_path:
             self.log_area.append(f"Đang nhận diện biển số từ ảnh ra: {img_path}...")
             QApplication.processEvents()
-            detected_plate = img_processing.extract_plate(img_path)
-            if detected_plate:
-                plate = detected_plate
+            detected_result = img_processing.extract_plate(img_path)
+            if detected_result:
+                plate = getattr(detected_result, "corrected", str(detected_result))
                 self.manual_plate.setText(plate)
                 self.log_area.append(f"✓ Nhận diện biển số thành công: {plate}")
             else:
@@ -607,7 +611,7 @@ class InOutScreen(QWidget):
 
         if success:
             self.log_area.append(f" [RỜI BÃI] - {msg}")
-            QMessageBox.information(self, "Thông báo", f"Xe biển số {plate} đã rời bãi.")
+            QMessageBox.information(self, "Thông báo", msg)
             self.clear_inputs()
         else:
             self.log_area.append(f" [LỖI RA] - {msg}")
