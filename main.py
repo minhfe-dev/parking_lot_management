@@ -554,45 +554,60 @@ class InOutScreen(QWidget):
         fname, _ = QFileDialog.getOpenFileName(self, "Chọn ảnh biển số", "", "Images (*.png *.jpg *.jpeg)")
         if fname:
             line_edit.setText(fname)
-            self.log_area.append(f"Đang xử lý ảnh: {fname}...")
-            QApplication.processEvents()  # Cập nhật UI trước khi chạy AI
-
-            plate_number = img_processing.extract_plate(fname)
-
-            if plate_number:
-                self.manual_plate.setText(plate_number)
-                self.log_area.append(f"✓ Nhận diện thành công: {plate_number}")
-            else:
-                self.log_area.append("✗ Lỗi: Không thể nhận diện biển số từ ảnh này!")
+            self.log_area.append(f"Đã chọn ảnh: {fname}")
 
     def process_entry(self):
-        plate = self.manual_plate.text().strip()
         img_path = self.in_image_path.text().strip()
+        plate = self.manual_plate.text().strip()
+
+        if img_path:
+            self.log_area.append(f"Đang nhận diện biển số từ ảnh vào: {img_path}...")
+            QApplication.processEvents()
+            detected_plate = img_processing.extract_plate(img_path)
+            if detected_plate:
+                plate = detected_plate
+                self.manual_plate.setText(plate)
+                self.log_area.append(f"✓ Nhận diện biển số thành công: {plate}")
+            else:
+                self.log_area.append("✗ Không nhận diện được biển số từ ảnh vào. Sử dụng biển số nhập tay nếu có.")
 
         if not plate:
-            QMessageBox.warning(self, "Cảnh báo", "Vui lòng scan ảnh hoặc nhập biển số!")
+            QMessageBox.warning(self, "Cảnh báo", "Không đọc được biển số từ ảnh. Vui lòng nhập biển số thủ công!")
             return
 
         success, msg = ravao_service.process_entry(plate, img_path)
 
         if success:
             self.log_area.append(f" [VÀO BÃI] - {msg}")
+            QMessageBox.information(self, "Thông báo", f"Xe biển số {plate} đã vào bãi.")
             self.clear_inputs()
         else:
             self.log_area.append(f" [LỖI VÀO] - {msg}")
 
     def process_exit(self):
-        plate = self.manual_plate.text().strip()
         img_path = self.out_image_path.text().strip()
+        plate = self.manual_plate.text().strip()
+
+        if img_path:
+            self.log_area.append(f"Đang nhận diện biển số từ ảnh ra: {img_path}...")
+            QApplication.processEvents()
+            detected_plate = img_processing.extract_plate(img_path)
+            if detected_plate:
+                plate = detected_plate
+                self.manual_plate.setText(plate)
+                self.log_area.append(f"✓ Nhận diện biển số thành công: {plate}")
+            else:
+                self.log_area.append("✗ Không nhận diện được biển số từ ảnh ra. Sử dụng biển số nhập tay nếu có.")
 
         if not plate:
-            QMessageBox.warning(self, "Cảnh báo", "Vui lòng scan ảnh hoặc nhập biển số!")
+            QMessageBox.warning(self, "Cảnh báo", "Không đọc được biển số từ ảnh. Vui lòng nhập biển số thủ công!")
             return
 
         success, msg = ravao_service.process_exit(plate, img_path)
 
         if success:
             self.log_area.append(f" [RỜI BÃI] - {msg}")
+            QMessageBox.information(self, "Thông báo", f"Xe biển số {plate} đã rời bãi.")
             self.clear_inputs()
         else:
             self.log_area.append(f" [LỖI RA] - {msg}")

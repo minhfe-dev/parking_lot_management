@@ -1,16 +1,32 @@
 from data.connect_database import get_connection
 from datetime import datetime
 from src.services import gia_service
+import re
+
+
+def _normalize_plate(plate):
+    return re.sub(r"[^A-Za-z0-9]", "", (plate or "").upper())
 
 
 def process_entry(plate, img_path):
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        plate = _normalize_plate(plate)
+        if not plate:
+            return False, "Biển số không hợp lệ!"
+
         time_in = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         # Kiểm tra vé tháng trong bảng monthly_passes
-        cursor.execute("SELECT id, expiration_date, status FROM monthly_passes WHERE license_plate = %s", (plate,))
+        cursor.execute(
+            """
+            SELECT id, expiration_date, status
+            FROM monthly_passes
+            WHERE UPPER(REPLACE(REPLACE(REPLACE(license_plate, '-', ''), ' ', ''), '.', '')) = %s
+            """,
+            (plate,)
+        )
         ve_thang = cursor.fetchone()
 
         loai_ve = "Vé Ngày"
@@ -34,12 +50,23 @@ def process_exit(plate, img_path):
     conn = get_connection()
     cursor = conn.cursor()
     try:
+        plate = _normalize_plate(plate)
+        if not plate:
+            return False, "Biển số không hợp lệ!"
+
         time_out = datetime.now()
         time_out_str = time_out.strftime("%Y-%m-%d %H:%M:%S")
 
         # Tìm lượt vào trong vehicle_logs
         cursor.execute(
-            "SELECT id, ticket_type, entry_time FROM vehicle_logs WHERE license_plate = %s AND status = 'Đang trong bãi'",
+            """
+            SELECT id, ticket_type, entry_time
+            FROM vehicle_logs
+            WHERE UPPER(REPLACE(REPLACE(REPLACE(license_plate, '-', ''), ' ', ''), '.', '')) = %s
+              AND status = 'Đang trong bãi'
+            ORDER BY entry_time DESC
+            LIMIT 1
+            """,
             (plate,)
         )
         luot_vao = cursor.fetchone()
