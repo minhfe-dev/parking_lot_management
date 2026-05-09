@@ -11,7 +11,8 @@ from src.services import (
     theguithang_service,
     ravao_service,
     lichsu_service,
-    gia_service
+    gia_service,
+    thongke_service
 )
 from src.utils import img_processing
 
@@ -829,6 +830,82 @@ class PriceSettingScreen(QWidget):
             QMessageBox.critical(self, "Lỗi", message)
 
 
+# ===== THỐNG KÊ =====
+class ReportScreen(QWidget):
+    def __init__(self, app):
+        super().__init__()
+        self.app = app
+
+        layout = QVBoxLayout()
+
+        title = QLabel("THỐNG KÊ BÃI XE")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("font-size: 20px; font-weight: bold; margin-bottom: 10px;")
+        layout.addWidget(title)
+
+        revenue_group = QGroupBox("Doanh thu")
+        revenue_layout = QHBoxLayout()
+        self.day_revenue = QLabel("Ngày: 0 VNĐ")
+        self.week_revenue = QLabel("Tuần: 0 VNĐ")
+        self.month_revenue = QLabel("Tháng: 0 VNĐ")
+        for lb in (self.day_revenue, self.week_revenue, self.month_revenue):
+            lb.setStyleSheet("font-size: 16px; font-weight: bold; padding: 8px;")
+            revenue_layout.addWidget(lb)
+        revenue_group.setLayout(revenue_layout)
+        layout.addWidget(revenue_group)
+
+        current_title = QLabel("Xe đang trong bãi")
+        current_title.setStyleSheet("font-size: 16px; font-weight: bold; margin-top: 8px;")
+        layout.addWidget(current_title)
+
+        self.current_table = QTableWidget()
+        self.current_table.setColumnCount(4)
+        self.current_table.setHorizontalHeaderLabels(["Biển số", "Loại xe", "Loại vé", "Giờ vào"])
+        self.current_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.current_table)
+
+        exited_title = QLabel("Xe đã rời bãi")
+        exited_title.setStyleSheet("font-size: 16px; font-weight: bold; margin-top: 8px;")
+        layout.addWidget(exited_title)
+
+        self.exited_table = QTableWidget()
+        self.exited_table.setColumnCount(6)
+        self.exited_table.setHorizontalHeaderLabels(
+            ["Biển số", "Loại xe", "Loại vé", "Giờ vào", "Giờ ra", "Phí"])
+        self.exited_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.exited_table)
+
+        btn_row = QHBoxLayout()
+        refresh_btn = QPushButton("Làm mới")
+        refresh_btn.clicked.connect(self.load_data)
+        back = QPushButton("← Quay lại")
+        back.clicked.connect(lambda: self.app.setCurrentIndex(1))
+        btn_row.addWidget(refresh_btn)
+        btn_row.addWidget(back)
+        layout.addLayout(btn_row)
+
+        self.setLayout(layout)
+        self.load_data()
+
+    def load_data(self):
+        revenue = thongke_service.get_revenue_summary()
+        self.day_revenue.setText(f"Ngày: {revenue['day']:,} VNĐ")
+        self.week_revenue.setText(f"Tuần: {revenue['week']:,} VNĐ")
+        self.month_revenue.setText(f"Tháng: {revenue['month']:,} VNĐ")
+
+        current_rows = thongke_service.get_vehicles_in_lot()
+        self.current_table.setRowCount(len(current_rows))
+        for i, row in enumerate(current_rows):
+            for j, val in enumerate(row):
+                self.current_table.setItem(i, j, QTableWidgetItem(str(val)))
+
+        exited_rows = thongke_service.get_departed_vehicles()
+        self.exited_table.setRowCount(len(exited_rows))
+        for i, row in enumerate(exited_rows):
+            for j, val in enumerate(row):
+                self.exited_table.setItem(i, j, QTableWidgetItem(str(val)))
+
+
 # ===== MAIN MENU =====
 class MainWindow(QWidget):
     def __init__(self, app):
@@ -944,7 +1021,7 @@ class App(QStackedWidget):
         self.month_screen = MonthlyPassScreen(self)
         self.history_screen = HistoryScreen(self)
         self.price_screen = PriceSettingScreen(self)
-        self.report_screen = FeatureScreen("THỐNG KÊ", self)
+        self.report_screen = ReportScreen(self)
         self.inout_screen = InOutScreen(self)
 
 
