@@ -1,7 +1,8 @@
 """
 Vietnamese License Plate OCR
 ═════════════════════════════
-Dùng easyocr.read_text() làm OCR engine.
+Dùng EasyOCR. Nếu có PyTorch + CUDA, Reader chạy trên GPU (tự phát hiện);
+đặt biến môi trường EASYOCR_GPU=0 để ép CPU, EASYOCR_GPU=1 để ép GPU.
 
 Pipeline:
   1. Detect & crop vùng biển số (OpenCV) nếu ảnh lớn
@@ -11,9 +12,11 @@ Pipeline:
   5. Scoring → trả về kết quả tốt nhất
 """
 
+import os
 import re
 import logging
 from dataclasses import dataclass
+from typing import Optional
 
 import cv2
 import numpy as np
@@ -21,12 +24,41 @@ import easyocr
 
 logger = logging.getLogger(__name__)
 _reader = None
+_reader_gpu_flag = None
+
+
+def _env_wants_gpu() -> Optional[bool]:
+    v = os.environ.get("EASYOCR_GPU", "").strip().lower()
+    if v in ("1", "true", "yes", "on"):
+        return True
+    if v in ("0", "false", "no", "off"):
+        return False
+    return None
+
+
+def _cuda_available() -> bool:
+    try:
+        import torch
+
+        return bool(torch.cuda.is_available())
+    except Exception:
+        return False
+
+
+def _use_gpu() -> bool:
+    forced = _env_wants_gpu()
+    if forced is not None:
+        return forced
+    return _cuda_available()
 
 
 def _get_reader():
-    global _reader
-    if _reader is None:
-        _reader = easyocr.Reader(["en"], gpu=False)
+    global _reader, _reader_gpu_flag
+    want_gpu = _use_gpu()
+    if _reader is None or _reader_gpu_flag != want_gpu:
+        _reader = easyocr.Reader(["en"], gpu=want_gpu)
+        _reader_gpu_flag = want_gpu
+        logger.info("EasyOCR Reader khởi tạo (gpu=%s)", want_gpu)
     return _reader
 
 # ══════════════════════════════════════════════
@@ -34,9 +66,10 @@ def _get_reader():
 # ══════════════════════════════════════════════
 EXPECTED_PLATE_LENGTH    = 8
 MIN_PLATE_LENGTH         = 5
+MAX_PLATE_LENGTH         = 10
 PLATE_ASPECT_MIN         = 1.5
 PLATE_ASPECT_MAX         = 6.5
-PLATE_AREA_MIN           = 800
+PLATE_AREA_MIN           = 600
 FULL_IMAGE_HEIGHT_THRESH = 200   # px — cao hơn này → coi là ảnh cả xe
 
 VALID_PROVINCE_CODES = {
@@ -66,9 +99,7 @@ VN_PATTERNS = [
 ]
 
 
-# ══════════════════════════════════════════════
 # Bước 1 — Detect & crop vùng biển số
-# ══════════════════════════════════════════════
 def _is_plate_shaped(x, y, w, h) -> bool:
     if w * h < PLATE_AREA_MIN:
         return False
@@ -80,6 +111,62 @@ def _pad_crop(img: np.ndarray, x, y, w, h, pad: int = 8) -> np.ndarray:
     H, W = img.shape[:2]
     return img[max(0, y-pad):min(H, y+h+pad),
                max(0, x-pad):min(W, x+w+pad)]
+
+
+def _dedupe_boxes(boxes: list[tuple], iou_thresh: float = 0.6) -> list[tuple]:
+    """
+    Loại box trùng lặp theo IoU để OCR nhanh hơn trên CPU.
+    """
+    if not boxes:
+        return []
+
+    def iou(a, b):
+        ax1, ay1, aw, ah, _ = a
+        bx1, by1, bw, bh, _ = b
+        ax2, ay2 = ax1 + aw, ay1 + ah
+        bx2, by2 = bx1 + bw, by1 + bh
+
+        ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+        ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+        if ix2 <= ix1 or iy2 <= iy1:
+            return 0.0
+        inter = (ix2 - ix1) * (iy2 - iy1)
+        union = aw * ah + bw * bh - inter
+        return inter / max(union, 1)
+
+    boxes = sorted(boxes, key=lambda c: c[4], reverse=True)
+    kept = []
+    for cand in boxes:
+        if all(iou(cand, k) < iou_thresh for k in kept):
+            kept.append(cand)
+    return kept
+
+
+def _deskew(gray: np.ndarray) -> np.ndarray:
+    """
+    Sửa nghiêng nhẹ để tăng OCR cho ảnh chụp lệch.
+    """
+    edges = cv2.Canny(gray, 60, 180)
+    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=40, minLineLength=40, maxLineGap=10)
+    if lines is None:
+        return gray
+
+    angles = []
+    for l in lines[:50]:
+        x1, y1, x2, y2 = l[0]
+        angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
+        if -20 <= angle <= 20:
+            angles.append(angle)
+    if not angles:
+        return gray
+
+    median_angle = float(np.median(angles))
+    if abs(median_angle) < 1.0:
+        return gray
+
+    h, w = gray.shape[:2]
+    M = cv2.getRotationMatrix2D((w // 2, h // 2), median_angle, 1.0)
+    return cv2.warpAffine(gray, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
 
 
 def detect_plate_regions(img: np.ndarray) -> list[np.ndarray]:
@@ -114,16 +201,23 @@ def detect_plate_regions(img: np.ndarray) -> list[np.ndarray]:
         logger.debug("Không detect được biển số → fallback ảnh gốc")
         return [img]
 
-    found.sort(key=lambda c: c[4], reverse=True)
-    crops = [_pad_crop(img, *c[:4]) for c in found[:5]]
+    found = _dedupe_boxes(found)
+    crops = [_pad_crop(img, *c[:4]) for c in found[:6]]
+    crops.append(img)  # fallback luôn thử ảnh gốc để tránh miss
     logger.debug("Detect %d vùng biển số", len(crops))
     return crops
 
 
-# ══════════════════════════════════════════════
+
 # Bước 2 — Tiền xử lý ảnh
-# ══════════════════════════════════════════════
-def _scale_up(gray: np.ndarray, target_h: int = 80) -> np.ndarray:
+def _scale_target_height() -> int:
+    """GPU: phóng to thêm một chút để tận dụng tốc độ inference."""
+    return 128 if _use_gpu() else 96
+
+
+def _scale_up(gray: np.ndarray, target_h: Optional[int] = None) -> np.ndarray:
+    if target_h is None:
+        target_h = _scale_target_height()
     h, w = gray.shape[:2]
     if h < target_h:
         scale = target_h / h
@@ -133,29 +227,34 @@ def _scale_up(gray: np.ndarray, target_h: int = 80) -> np.ndarray:
 
 
 def preprocess_variants(crop: np.ndarray) -> list[np.ndarray]:
-    """Trả về 4 biến thể để OCR vote."""
+    """Trả về nhiều biến thể để OCR vote tốt hơn trên CPU."""
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if len(crop.shape) == 3 else crop.copy()
     gray = _scale_up(gray)
+    gray = _deskew(gray)
 
-    clahe_obj = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    clahe_obj = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
     clahe     = clahe_obj.apply(gray)
-    denoised  = cv2.fastNlMeansDenoising(clahe, h=15)
+    denoised  = cv2.fastNlMeansDenoising(clahe, h=12)
+    sharpened = cv2.GaussianBlur(denoised, (0, 0), 1.2)
+    sharpened = cv2.addWeighted(denoised, 1.7, sharpened, -0.7, 0)
     binary    = cv2.adaptiveThreshold(
-        denoised, 255,
+        sharpened, 255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY, 31, 2,
+        cv2.THRESH_BINARY, 31, 1,
     )
-    return [gray, clahe, binary, cv2.bitwise_not(binary)]
+    otsu = cv2.threshold(sharpened, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
+    return [gray, clahe, denoised, sharpened, binary, cv2.bitwise_not(binary), otsu]
 
 
-# ══════════════════════════════════════════════
 # Bước 3 — Correction & Scoring
-# ══════════════════════════════════════════════
 def _correct(raw: str) -> str:
     """Sửa ký tự nhầm theo từng zone biển số VN."""
     cleaned = re.sub(r"[^A-Za-z0-9]", "", raw.upper())
     if len(cleaned) < MIN_PLATE_LENGTH:
         return ""
+    if len(cleaned) > MAX_PLATE_LENGTH:
+        # ưu tiên đoạn cuối vì serial thường nằm cuối và OCR hay dính tiền tố rác
+        cleaned = cleaned[-MAX_PLATE_LENGTH:]
 
     province = cleaned[:2].translate(DIGIT_CORRECTIONS)
 
@@ -196,9 +295,7 @@ def _score(plate: str) -> int:
     return score
 
 
-# ══════════════════════════════════════════════
 # Result
-# ══════════════════════════════════════════════
 @dataclass
 class PlateResult:
     formatted: str    # "51A-12345"
@@ -207,23 +304,25 @@ class PlateResult:
     score:     int
 
 
-# ══════════════════════════════════════════════
 # Bước 4 — Parse kết quả read_text()
-# ══════════════════════════════════════════════
-def _parse_readtext(results) -> list[str]:
+def _parse_readtext(results) -> list[tuple[str, float]]:
     """readtext() trả về list of (bbox, text, confidence)."""
     texts = []
     for item in results:
-        if isinstance(item, (list, tuple)) and len(item) >= 2:
-            texts.append(str(item[1]))
+        if isinstance(item, (list, tuple)) and len(item) >= 3:
+            txt = str(item[1])
+            try:
+                conf = float(item[2])
+            except Exception:
+                conf = 0.5
+            texts.append((txt, conf))
+        elif isinstance(item, (list, tuple)) and len(item) >= 2:
+            texts.append((str(item[1]), 0.5))
         elif isinstance(item, str):
-            texts.append(item)
+            texts.append((item, 0.5))
     return texts
 
-
-# ══════════════════════════════════════════════
 # Public API
-# ══════════════════════════════════════════════
 def extract_plate(image_path: str) -> PlateResult | None:
     """
     Đọc ảnh → detect biển số → OCR → correction → PlateResult tốt nhất.
@@ -242,16 +341,23 @@ def extract_plate(image_path: str) -> PlateResult | None:
         for crop in regions:
             for variant in preprocess_variants(crop):
                 try:
-                    raw_results = _get_reader().readtext(variant)
+                    raw_results = _get_reader().readtext(
+                        variant,
+                        detail=1,
+                        paragraph=False,
+                        allowlist="0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ.-",
+                        decoder="beamsearch",
+                    )
                 except Exception:
                     logger.debug("readtext() lỗi", exc_info=True)
                     continue
 
-                for text in _parse_readtext(raw_results):
+                for text, conf in _parse_readtext(raw_results):
                     corrected = _correct(text)
                     if not corrected:
                         continue
-                    s      = _score(corrected)
+                    # phối hợp score ngữ nghĩa + độ tin cậy OCR
+                    s = _score(corrected) + int(max(0.0, min(1.0, conf)) * 10)
                     result = PlateResult(
                         formatted=_format(corrected),
                         corrected=corrected,
@@ -286,9 +392,7 @@ def extract_plate_from_array(img: np.ndarray) -> PlateResult | None:
         os.unlink(tmp)
 
 
-# ══════════════════════════════════════════════
 # CLI
-# ══════════════════════════════════════════════
 if __name__ == "__main__":
     import sys
     logging.basicConfig(level=logging.DEBUG, format="%(levelname)s | %(message)s")

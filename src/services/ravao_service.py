@@ -2,11 +2,7 @@ from data.connect_database import get_connection
 from datetime import datetime
 import re
 
-SHIFT_PRICES = {
-    "day": {"Xe máy": 3000, "Ô tô": 15000},
-    "evening": {"Xe máy": 5000, "Ô tô": 20000},
-    "night": {"Xe máy": 10000, "Ô tô": 30000},
-}
+from src.services import gia_service
 
 
 def _normalize_plate(plate):
@@ -22,17 +18,6 @@ def _ensure_vehicle_type_column(cursor):
     if _has_vehicle_type_column(cursor):
         return
     cursor.execute("ALTER TABLE vehicle_logs ADD COLUMN vehicle_type VARCHAR(20) NULL AFTER ticket_type")
-
-
-def _fee_by_shift(vehicle_type, time_in):
-    hour = time_in.hour
-    if 6 <= hour < 18:
-        shift = "day"
-    elif 18 <= hour < 21:
-        shift = "evening"
-    else:
-        shift = "night"
-    return SHIFT_PRICES[shift].get(vehicle_type, SHIFT_PRICES[shift]["Xe máy"])
 
 
 def process_entry(plate, img_path, vehicle_type):
@@ -150,7 +135,8 @@ def process_exit(plate, img_path):
                 t_in = time_in
             else:
                 t_in = datetime.strptime(str(time_in)[:19], "%Y-%m-%d %H:%M:%S")
-            thanh_tien = _fee_by_shift(vehicle_type, t_in)
+            vt = vehicle_type if vehicle_type in ("Xe máy", "Ô tô") else "Xe máy"
+            thanh_tien = gia_service.get_exit_fee_day_ticket(vt, t_in)
 
         cursor.execute(
             "UPDATE vehicle_logs SET exit_time = %s, exit_image = %s, fee = %s, status = %s WHERE id = %s",

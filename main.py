@@ -1,8 +1,10 @@
 import sys
+from datetime import date, datetime
 from PyQt6.QtWidgets import *
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QHeaderView, QGridLayout
 from PyQt6.QtCore import QDate, QTime, QDateTime
+from PyQt6.QtGui import QShowEvent
 
 from src.services import (
     nhanvien_service,
@@ -62,6 +64,22 @@ QHeaderView::section {
     border: none;
 }
 """
+
+
+def _add_back_logout_row(layout: QVBoxLayout, app):
+    """Hàng nút Đăng xuất + Quay lại (dùng trên các màn chức năng toàn màn hình)."""
+    row = QHBoxLayout()
+    logout_btn = QPushButton("Đăng xuất")
+    logout_btn.setStyleSheet(
+        "background-color: #c0392b; font-weight: bold; padding: 8px 14px;"
+    )
+    logout_btn.clicked.connect(app.confirm_logout)
+    back_btn = QPushButton("← Quay lại")
+    back_btn.clicked.connect(lambda: app.setCurrentIndex(1))
+    row.addWidget(logout_btn)
+    row.addWidget(back_btn)
+    row.addStretch()
+    layout.addLayout(row)
 
 
 # ===== LOGIN =====
@@ -151,11 +169,8 @@ class FeatureScreen(QWidget):
         label = QLabel(title)
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        back = QPushButton("← Quay lại")
-        back.clicked.connect(lambda: self.app.setCurrentIndex(1))
-
         layout.addWidget(label)
-        layout.addWidget(back)
+        _add_back_logout_row(layout, self.app)
         self.setLayout(layout)
 
 
@@ -171,8 +186,18 @@ class StaffScreen(QWidget):
         self.name.setPlaceholderText("Nhập họ và tên: ")
         self.phone = QLineEdit()
         self.phone.setPlaceholderText("Nhập số điện thoại: ")
-        self.position = QLineEdit()
-        self.position.setPlaceholderText("Chức vụ: ")
+        self.position = QComboBox()
+        self.position.setEditable(True)
+        self.position.addItems(
+            [
+                "Quản lý",
+                "Lễ tân",
+                "Bảo vệ",
+                "Thu ngân",
+                "Nhân viên vận hành",
+                "Kỹ thuật / IT",
+            ]
+        )
 
         add_btn = QPushButton("Thêm")
         update_btn = QPushButton("Sửa")
@@ -196,9 +221,7 @@ class StaffScreen(QWidget):
         layout.addWidget(search_btn)
         layout.addWidget(self.table)
 
-        back = QPushButton("← Quay lại")
-        back.clicked.connect(lambda: self.app.setCurrentIndex(1))
-        layout.addWidget(back)
+        _add_back_logout_row(layout, self.app)
 
         self.setLayout(layout)
 
@@ -218,7 +241,7 @@ class StaffScreen(QWidget):
                 self.table.setItem(i, j, QTableWidgetItem(str(val)))
 
     def add_staff(self):
-        nhanvien_service.add(self.name.text(), self.phone.text(), self.position.text())
+        nhanvien_service.add(self.name.text(), self.phone.text(), self.position.currentText().strip())
         self.load_data()
         self.clear_inputs()
 
@@ -227,7 +250,7 @@ class StaffScreen(QWidget):
         if row < 0: return
         staff_id = self.table.item(row, 0).text()
 
-        nhanvien_service.update(staff_id, self.name.text(), self.phone.text(), self.position.text())
+        nhanvien_service.update(staff_id, self.name.text(), self.phone.text(), self.position.currentText().strip())
         self.load_data()
         self.clear_inputs()
 
@@ -250,12 +273,12 @@ class StaffScreen(QWidget):
     def fill_form(self, row, col):
         self.name.setText(self.table.item(row, 1).text())
         self.phone.setText(self.table.item(row, 2).text())
-        self.position.setText(self.table.item(row, 3).text())
+        self.position.setCurrentText(self.table.item(row, 3).text())
 
     def clear_inputs(self):
         self.name.clear()
         self.phone.clear()
-        self.position.clear()
+        self.position.setCurrentIndex(0)
 
 
 # ===== ACCOUNT =====
@@ -266,34 +289,42 @@ class AccountScreen(QWidget):
 
         layout = QVBoxLayout()
 
-        self.username = QLineEdit()
-        self.username.setPlaceholderText("Nhập tên tài khoản...")
-        self.password = QLineEdit()
-        self.password.setPlaceholderText("Nhập mật khẩu...")
+        title = QLabel("QUẢN LÝ TÀI KHOẢN")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 8px;")
+        layout.addWidget(title)
 
+        form = QFormLayout()
+        self.username = QLineEdit()
+        self.username.setPlaceholderText("Tên đăng nhập...")
+        self.password = QLineEdit()
+        self.password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password.setPlaceholderText("Mật khẩu...")
         self.role = QComboBox()
         self.role.addItems(["admin", "staff"])
-
         self.employee = QComboBox()
+        form.addRow("Tài khoản:", self.username)
+        form.addRow("Mật khẩu:", self.password)
+        form.addRow("Quyền:", self.role)
+        form.addRow("Nhân viên:", self.employee)
+        layout.addLayout(form)
 
+        btn_row = QHBoxLayout()
         add_btn = QPushButton("Thêm")
         delete_btn = QPushButton("Xoá")
+        btn_row.addWidget(add_btn)
+        btn_row.addWidget(delete_btn)
+        layout.addLayout(btn_row)
 
         self.table = QTableWidget()
         self.table.setColumnCount(5)
-        self.table.setHorizontalHeaderLabels(["ID", "Username", "Password", "Quyền"])
-
-        layout.addWidget(self.username)
-        layout.addWidget(self.password)
-        layout.addWidget(self.role)
-        layout.addWidget(self.employee)
-        layout.addWidget(add_btn)
-        layout.addWidget(delete_btn)
+        self.table.setHorizontalHeaderLabels(
+            ["ID", "Tài khoản", "Mật khẩu", "Quyền", "Nhân viên"]
+        )
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.table)
 
-        back = QPushButton("← Quay lại")
-        back.clicked.connect(lambda: self.app.setCurrentIndex(1))
-        layout.addWidget(back)
+        _add_back_logout_row(layout, self.app)
 
         self.setLayout(layout)
 
@@ -303,9 +334,14 @@ class AccountScreen(QWidget):
         self.load_employees()
         self.load_data()
 
+    def showEvent(self, event: QShowEvent):
+        super().showEvent(event)
+        self.load_employees()
+
     def load_employees(self):
         rows = taikhoan_service.get_employees()
         self.employee.clear()
+        self.employee.addItem("— Chọn nhân viên —", None)
         for r in rows:
             self.employee.addItem(r[1], r[0])
 
@@ -317,21 +353,36 @@ class AccountScreen(QWidget):
                 self.table.setItem(i, j, QTableWidgetItem(str(val)))
 
     def add_user(self):
-        taikhoan_service.add(
-            self.username.text(),
-            self.password.text(),
-            self.role.currentText(),
-            self.employee.currentData()
-        )
+        user = self.username.text().strip()
+        pw = self.password.text()
+        id_nv = self.employee.currentData()
+        if not user or not pw:
+            QMessageBox.warning(self, "Lỗi", "Vui lòng nhập đủ tài khoản và mật khẩu.")
+            return
+        if self.employee.currentIndex() <= 0 or id_nv is None:
+            QMessageBox.warning(self, "Lỗi", "Vui lòng chọn nhân viên liên kết với tài khoản.")
+            return
+        try:
+            taikhoan_service.add(
+                user,
+                pw,
+                self.role.currentText(),
+                id_nv,
+            )
+        except Exception as e:
+            QMessageBox.warning(self, "Lỗi", f"Không thể thêm tài khoản: {e}")
+            return
         self.load_data()
         self.username.clear()
         self.password.clear()
+        self.employee.setCurrentIndex(0)
 
     def delete_user(self):
         row = self.table.currentRow()
-        if row < 0: return
+        if row < 0:
+            QMessageBox.warning(self, "Cảnh báo", "Chọn một dòng trong bảng để xoá.")
+            return
         user_id = self.table.item(row, 0).text()
-
         taikhoan_service.delete(user_id)
         self.load_data()
 
@@ -392,9 +443,7 @@ class MonthlyPassScreen(QWidget):
         self.table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.table)
 
-        back = QPushButton("← Quay lại")
-        back.clicked.connect(lambda: self.app.setCurrentIndex(1))
-        layout.addWidget(back)
+        _add_back_logout_row(layout, self.app)
 
         self.setLayout(layout)
 
@@ -543,10 +592,7 @@ class InOutScreen(QWidget):
         self.log_area.setPlaceholderText("Thông báo hệ thống sẽ hiển thị tại đây...")
         layout.addWidget(self.log_area)
 
-        # --- NÚT QUAY LẠI ---
-        back = QPushButton("← Quay lại")
-        back.clicked.connect(lambda: self.app.setCurrentIndex(1))
-        layout.addWidget(back)
+        _add_back_logout_row(layout, self.app)
 
         self.setLayout(layout)
 
@@ -688,20 +734,28 @@ class HistoryScreen(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.table)
 
-        # --- NÚT QUAY LẠI ---
-        back = QPushButton("← Quay lại")
-        back.clicked.connect(lambda: self.app.setCurrentIndex(1))
-        layout.addWidget(back)
+        _add_back_logout_row(layout, self.app)
 
         self.setLayout(layout)
         self.load_data()
 
+    def _format_history_cell(self, val):
+        if val is None:
+            return ""
+        if isinstance(val, datetime):
+            return val.strftime("%Y-%m-%d %H:%M:%S")
+        if isinstance(val, date):
+            return val.strftime("%Y-%m-%d")
+        return str(val)
+
     def load_data(self):
         rows = lichsu_service.get_all()
         self.table.setRowCount(len(rows))
+        keys = lichsu_service.HISTORY_ROW_KEYS
         for i, row in enumerate(rows):
-            for j, val in enumerate(row):
-                self.table.setItem(i, j, QTableWidgetItem(str(val)))
+            for j, key in enumerate(keys):
+                text = self._format_history_cell(row.get(key))
+                self.table.setItem(i, j, QTableWidgetItem(text))
 
     def search_history(self):
         plate = self.search_plate.text().strip()
@@ -712,9 +766,11 @@ class HistoryScreen(QWidget):
         rows = lichsu_service.search(plate, name, t_from, t_to)
 
         self.table.setRowCount(len(rows))
+        keys = lichsu_service.HISTORY_ROW_KEYS
         for i, row in enumerate(rows):
-            for j, val in enumerate(row):
-                self.table.setItem(i, j, QTableWidgetItem(str(val)))
+            for j, key in enumerate(keys):
+                text = self._format_history_cell(row.get(key))
+                self.table.setItem(i, j, QTableWidgetItem(text))
 
     def clear_filters(self):
         self.search_plate.clear()
@@ -732,38 +788,47 @@ class PriceSettingScreen(QWidget):
 
         layout = QVBoxLayout()
 
-        # --- TIÊU ĐỀ ---
         title = QLabel("CẤU HÌNH ĐƠN GIÁ DỊCH VỤ")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title.setStyleSheet("font-size: 20px; font-weight: bold; margin-bottom: 20px;")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; margin-bottom: 12px;")
         layout.addWidget(title)
+
+        hint = QLabel(
+            "Vé ngày: một ngày chia 3 ca, mỗi ca 8 giờ — "
+            "ca 1: 00:00–08:00, ca 2: 08:00–16:00, ca 3: 16:00–24:00. "
+            "Phí tính theo ca xe vào bãi."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #bdc3c7; font-size: 12px; margin-bottom: 8px;")
+        layout.addWidget(hint)
 
         content_layout = QHBoxLayout()
 
-        # ---GIÁ VÉ NGÀY ---
-        day_group = QGroupBox("Giá Vé Ngày (VNĐ/Giờ)")
-        day_group.setStyleSheet(
-            "QGroupBox { font-weight: bold; border: 1px solid #2c3e50; margin-top: 10px; padding: 15px; }")
-        day_layout = QFormLayout()
+        shifts_wrap = QVBoxLayout()
+        self.shift1_motor, self.shift1_car = self._make_shift_spinboxes()
+        self.shift2_motor, self.shift2_car = self._make_shift_spinboxes()
+        self.shift3_motor, self.shift3_car = self._make_shift_spinboxes()
 
-        self.day_motor = QSpinBox()
-        self.day_motor.setRange(0, 1000000)
-        self.day_motor.setSingleStep(1000)
-        self.day_motor.setSuffix(" VNĐ")
+        g1 = QGroupBox("Ca 1 (00:00 – 08:00)")
+        g1.setLayout(self._shift_form(self.shift1_motor, self.shift1_car))
+        g2 = QGroupBox("Ca 2 (08:00 – 16:00)")
+        g2.setLayout(self._shift_form(self.shift2_motor, self.shift2_car))
+        g3 = QGroupBox("Ca 3 (16:00 – 24:00)")
+        g3.setLayout(self._shift_form(self.shift3_motor, self.shift3_car))
+        for g in (g1, g2, g3):
+            g.setStyleSheet(
+                "QGroupBox { font-weight: bold; border: 1px solid #2c3e50; margin-top: 8px; padding: 10px; }"
+            )
+            shifts_wrap.addWidget(g)
 
-        self.day_car = QSpinBox()
-        self.day_car.setRange(0, 1000000)
-        self.day_car.setSingleStep(5000)
-        self.day_car.setSuffix(" VNĐ")
+        shifts_widget = QWidget()
+        shifts_widget.setLayout(shifts_wrap)
+        content_layout.addWidget(shifts_widget)
 
-        day_layout.addRow("Xe máy:", self.day_motor)
-        day_layout.addRow("Ô tô:", self.day_car)
-        day_group.setLayout(day_layout)
-
-        # ---GIÁ VÉ THÁNG ---
         month_group = QGroupBox("Giá Vé Tháng (VNĐ/Tháng)")
         month_group.setStyleSheet(
-            "QGroupBox { font-weight: bold; border: 1px solid #2c3e50; margin-top: 10px; padding: 15px; }")
+            "QGroupBox { font-weight: bold; border: 1px solid #2c3e50; margin-top: 10px; padding: 15px; }"
+        )
         month_layout = QFormLayout()
 
         self.month_motor = QSpinBox()
@@ -779,12 +844,9 @@ class PriceSettingScreen(QWidget):
         month_layout.addRow("Xe máy:", self.month_motor)
         month_layout.addRow("Ô tô:", self.month_car)
         month_group.setLayout(month_layout)
-
-        content_layout.addWidget(day_group)
         content_layout.addWidget(month_group)
         layout.addLayout(content_layout)
 
-        # --- NÚT LƯU CÀI ĐẶT ---
         save_btn = QPushButton(" LƯU THAY ĐỔI")
         save_btn.setStyleSheet("""
             QPushButton {
@@ -800,27 +862,49 @@ class PriceSettingScreen(QWidget):
 
         layout.addStretch()
 
-        # --- NÚT QUAY LẠI ---
-        back = QPushButton("← Quay lại")
-        back.clicked.connect(lambda: self.app.setCurrentIndex(1))
-        layout.addWidget(back)
+        _add_back_logout_row(layout, self.app)
 
         self.setLayout(layout)
         self.load_current_prices()
 
+    def _make_shift_spinboxes(self):
+        m = QSpinBox()
+        m.setRange(0, 1000000)
+        m.setSingleStep(1000)
+        m.setSuffix(" VNĐ")
+        c = QSpinBox()
+        c.setRange(0, 1000000)
+        c.setSingleStep(1000)
+        c.setSuffix(" VNĐ")
+        return m, c
+
+    def _shift_form(self, motor: QSpinBox, car: QSpinBox) -> QFormLayout:
+        fl = QFormLayout()
+        fl.addRow("Xe máy:", motor)
+        fl.addRow("Ô tô:", car)
+        return fl
+
     def load_current_prices(self):
         prices = gia_service.get_current_prices()
-        self.day_motor.setValue(prices.get("day_motor", 0))
-        self.day_car.setValue(prices.get("day_car", 0))
-        self.month_motor.setValue(prices.get("month_motor", 0))
-        self.month_car.setValue(prices.get("month_car", 0))
+        self.shift1_motor.setValue(int(prices.get("shift1_motor", 3000)))
+        self.shift1_car.setValue(int(prices.get("shift1_car", 10000)))
+        self.shift2_motor.setValue(int(prices.get("shift2_motor", 5000)))
+        self.shift2_car.setValue(int(prices.get("shift2_car", 15000)))
+        self.shift3_motor.setValue(int(prices.get("shift3_motor", 10000)))
+        self.shift3_car.setValue(int(prices.get("shift3_car", 20000)))
+        self.month_motor.setValue(int(prices.get("month_motor", 0)))
+        self.month_car.setValue(int(prices.get("month_car", 0)))
 
     def save_prices(self):
         prices = {
-            "day_motor": self.day_motor.value(),
-            "day_car": self.day_car.value(),
+            "shift1_motor": self.shift1_motor.value(),
+            "shift1_car": self.shift1_car.value(),
+            "shift2_motor": self.shift2_motor.value(),
+            "shift2_car": self.shift2_car.value(),
+            "shift3_motor": self.shift3_motor.value(),
+            "shift3_car": self.shift3_car.value(),
             "month_motor": self.month_motor.value(),
-            "month_car": self.month_car.value()
+            "month_car": self.month_car.value(),
         }
 
         success, message = gia_service.update_prices(prices)
@@ -878,10 +962,17 @@ class ReportScreen(QWidget):
         btn_row = QHBoxLayout()
         refresh_btn = QPushButton("Làm mới")
         refresh_btn.clicked.connect(self.load_data)
+        logout_btn = QPushButton("Đăng xuất")
+        logout_btn.setStyleSheet(
+            "background-color: #c0392b; font-weight: bold; padding: 8px 14px;"
+        )
+        logout_btn.clicked.connect(self.app.confirm_logout)
         back = QPushButton("← Quay lại")
         back.clicked.connect(lambda: self.app.setCurrentIndex(1))
         btn_row.addWidget(refresh_btn)
+        btn_row.addWidget(logout_btn)
         btn_row.addWidget(back)
+        btn_row.addStretch()
         layout.addLayout(btn_row)
 
         self.setLayout(layout)
@@ -999,14 +1090,7 @@ class MainWindow(QWidget):
         self.app.setCurrentIndex(index)
 
     def logout(self):
-        reply = QMessageBox.question(
-            self,
-            "Xác nhận",
-            "Bạn có chắc muốn đăng xuất?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        if reply == QMessageBox.StandardButton.Yes:
-            self.app.logout()
+        self.app.confirm_logout()
 
 
 # ===== APP =====
@@ -1040,6 +1124,16 @@ class App(QStackedWidget):
     def show_main(self, role):
         print(f"Đăng nhập thành công với quyền: {role}")
         self.setCurrentIndex(1)
+
+    def confirm_logout(self):
+        reply = QMessageBox.question(
+            self,
+            "Xác nhận",
+            "Bạn có chắc muốn đăng xuất?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.logout()
 
     def logout(self):
         self.login_screen.clear_fields()

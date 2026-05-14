@@ -4,7 +4,14 @@ def get_all():
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT id, username, password, role, employee_id FROM users")
+        cursor.execute(
+            """
+            SELECT u.id, u.username, u.password, u.role,
+                   COALESCE(e.full_name, '')
+            FROM users u
+            LEFT JOIN employees e ON u.employee_id = e.id
+            """
+        )
         return cursor.fetchall()
     finally:
         conn.close()
