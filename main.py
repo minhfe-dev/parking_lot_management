@@ -65,6 +65,13 @@ QHeaderView::section {
 }
 """
 
+# Chỉ admin: 2=Nhân viên, 3=Tài khoản, 5=Lịch sử, 6=Giá vé, 7=Thống kê
+ADMIN_ONLY_SCREEN_INDICES = frozenset({2, 3, 5, 6, 7})
+
+
+def _is_admin_role(role) -> bool:
+    return (role or "").strip().lower() == "admin"
+
 
 def _add_back_logout_row(layout: QVBoxLayout, app):
     """Hàng nút Đăng xuất + Quay lại (dùng trên các màn chức năng toàn màn hình)."""
@@ -209,7 +216,8 @@ class StaffScreen(QWidget):
 
         self.table = QTableWidget()
         self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["ID", "Tên", "SĐT", "Chức vụ"])
+        self.table.setHorizontalHeaderLabels(["STT", "Tên", "SĐT", "Chức vụ"])
+        self.table.verticalHeader().setVisible(False)
 
         layout.addWidget(self.name)
         layout.addWidget(self.phone)
@@ -233,12 +241,27 @@ class StaffScreen(QWidget):
 
         self.load_data()
 
-    def load_data(self):
-        rows = nhanvien_service.get_all()
+    def _populate_staff_table(self, rows):
         self.table.setRowCount(len(rows))
         for i, row in enumerate(rows):
-            for j, val in enumerate(row):
-                self.table.setItem(i, j, QTableWidgetItem(str(val)))
+            staff_id, name, phone, position = row[0], row[1], row[2], row[3]
+            stt_item = QTableWidgetItem(str(i + 1))
+            stt_item.setData(Qt.ItemDataRole.UserRole, staff_id)
+            stt_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.table.setItem(i, 0, stt_item)
+            self.table.setItem(i, 1, QTableWidgetItem(str(name)))
+            self.table.setItem(i, 2, QTableWidgetItem(str(phone)))
+            self.table.setItem(i, 3, QTableWidgetItem(str(position)))
+
+    def _staff_id_from_row(self, row: int):
+        item = self.table.item(row, 0)
+        if item is None:
+            return None
+        staff_id = item.data(Qt.ItemDataRole.UserRole)
+        return staff_id if staff_id is not None else item.text()
+
+    def load_data(self):
+        self._populate_staff_table(nhanvien_service.get_all())
 
     def add_staff(self):
         nhanvien_service.add(self.name.text(), self.phone.text(), self.position.currentText().strip())
@@ -248,7 +271,9 @@ class StaffScreen(QWidget):
     def update_staff(self):
         row = self.table.currentRow()
         if row < 0: return
-        staff_id = self.table.item(row, 0).text()
+        staff_id = self._staff_id_from_row(row)
+        if staff_id is None:
+            return
 
         nhanvien_service.update(staff_id, self.name.text(), self.phone.text(), self.position.currentText().strip())
         self.load_data()
@@ -257,18 +282,16 @@ class StaffScreen(QWidget):
     def delete_staff(self):
         row = self.table.currentRow()
         if row < 0: return
-        staff_id = self.table.item(row, 0).text()
+        staff_id = self._staff_id_from_row(row)
+        if staff_id is None:
+            return
 
         nhanvien_service.delete(staff_id)
         self.load_data()
         self.clear_inputs()
 
     def search_staff(self):
-        rows = nhanvien_service.search(self.search.text())
-        self.table.setRowCount(len(rows))
-        for i, row in enumerate(rows):
-            for j, val in enumerate(row):
-                self.table.setItem(i, j, QTableWidgetItem(str(val)))
+        self._populate_staff_table(nhanvien_service.search(self.search.text()))
 
     def fill_form(self, row, col):
         self.name.setText(self.table.item(row, 1).text())
@@ -1081,7 +1104,21 @@ class MainWindow(QWidget):
 
         self.setLayout(main_layout)
 
+    def apply_permissions(self, role):
+        is_admin = _is_admin_role(role)
+        for index in ADMIN_ONLY_SCREEN_INDICES:
+            btn = self.buttons.get(index)
+            if btn is not None:
+                btn.setVisible(is_admin)
+
     def switch(self, index):
+        if not self.app.can_access_screen(index):
+            QMessageBox.warning(
+                self,
+                "Không có quyền",
+                "Chức năng này chỉ dành cho quản trị viên (admin).",
+            )
+            return
         for i, btn in self.buttons.items():
             if i == index:
                 btn.setStyleSheet("background-color: #3498db;")
@@ -1119,11 +1156,29 @@ class App(QStackedWidget):
         self.addWidget(self.report_screen)  # Index 7
         self.addWidget(self.inout_screen)  # Index 8
 
+        self.current_role = None
         self.setCurrentIndex(0)
 
+    def can_access_screen(self, index: int) -> bool:
+        if index not in ADMIN_ONLY_SCREEN_INDICES:
+            return True
+        return _is_admin_role(self.current_role)
+
+    def setCurrentIndex(self, index: int):
+        if index not in (0, 1) and not self.can_access_screen(index):
+            QMessageBox.warning(
+                self,
+                "Không có quyền",
+                "Chức năng này chỉ dành cho quản trị viên (admin).",
+            )
+            return
+        super().setCurrentIndex(index)
+
     def show_main(self, role):
+        self.current_role = role
+        self.main_screen.apply_permissions(role)
         print(f"Đăng nhập thành công với quyền: {role}")
-        self.setCurrentIndex(1)
+        super().setCurrentIndex(1)
 
     def confirm_logout(self):
         reply = QMessageBox.question(
@@ -1136,8 +1191,10 @@ class App(QStackedWidget):
             self.logout()
 
     def logout(self):
+        self.current_role = None
+        self.main_screen.apply_permissions(None)
         self.login_screen.clear_fields()
-        self.setCurrentIndex(0)
+        super().setCurrentIndex(0)
 # ===== RUN =====
 if __name__ == "__main__":
     app = QApplication(sys.argv)

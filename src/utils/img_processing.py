@@ -1,16 +1,3 @@
-"""
-Vietnamese License Plate OCR
-═════════════════════════════
-Dùng EasyOCR. Nếu có PyTorch + CUDA, Reader chạy trên GPU (tự phát hiện);
-đặt biến môi trường EASYOCR_GPU=0 để ép CPU, EASYOCR_GPU=1 để ép GPU.
-
-Pipeline:
-  1. Detect & crop vùng biển số (OpenCV) nếu ảnh lớn
-  2. Tiền xử lý ảnh → 4 biến thể
-  3. Gọi easyocr.read_text() cho từng biến thể
-  4. Correction ký tự theo vị trí VN
-  5. Scoring → trả về kết quả tốt nhất
-"""
 
 import os
 import re
@@ -61,9 +48,7 @@ def _get_reader():
         logger.info("EasyOCR Reader khởi tạo (gpu=%s)", want_gpu)
     return _reader
 
-# ══════════════════════════════════════════════
 # Constants
-# ══════════════════════════════════════════════
 EXPECTED_PLATE_LENGTH    = 8
 MIN_PLATE_LENGTH         = 5
 MAX_PLATE_LENGTH         = 10
