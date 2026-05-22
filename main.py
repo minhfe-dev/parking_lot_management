@@ -677,7 +677,9 @@ class InOutScreen(QWidget):
             QMessageBox.warning(self, "Cảnh báo", "Không đọc được biển số từ ảnh. Vui lòng nhập biển số thủ công!")
             return
 
-        success, msg = ravao_service.process_exit(plate, img_path)
+        success, msg = ravao_service.process_exit(
+            plate, img_path, self.vehicle_type.currentText()
+        )
 
         if success:
             self.log_area.append(f" [RỜI BÃI] - {msg}")

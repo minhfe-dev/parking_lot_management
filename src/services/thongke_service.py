@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 
 from data.connect_database import get_connection
+from src.services.ravao_service import backfill_vehicle_types_in_lot, vehicle_type_expr_sql
 
 
 def _sum_fee(cursor, start_time, end_time):
@@ -37,18 +38,20 @@ def get_revenue_summary():
 
 
 def get_vehicles_in_lot():
+    backfill_vehicle_types_in_lot()
+    vt_sql = vehicle_type_expr_sql("vl")
     conn = get_connection()
     cursor = conn.cursor()
     try:
         cursor.execute(
-            """
-            SELECT license_plate,
-                   COALESCE(vehicle_type, 'Xe'),
-                   ticket_type,
-                   entry_time
-            FROM vehicle_logs
-            WHERE status = 'Đang trong bãi'
-            ORDER BY entry_time DESC
+            f"""
+            SELECT vl.license_plate,
+                   {vt_sql},
+                   vl.ticket_type,
+                   vl.entry_time
+            FROM vehicle_logs vl
+            WHERE vl.status = 'Đang trong bãi'
+            ORDER BY vl.entry_time DESC
             """
         )
         return cursor.fetchall()
@@ -57,21 +60,22 @@ def get_vehicles_in_lot():
 
 
 def get_departed_vehicles(limit=300):
+    vt_sql = vehicle_type_expr_sql("vl")
     conn = get_connection()
     cursor = conn.cursor()
     try:
         cursor.execute(
-            """
-            SELECT license_plate,
-                   COALESCE(vehicle_type, 'Xe'),
-                   ticket_type,
-                   entry_time,
-                   exit_time,
-                   COALESCE(fee, 0)
-            FROM vehicle_logs
-            WHERE status != 'Đang trong bãi'
-              AND exit_time IS NOT NULL
-            ORDER BY exit_time DESC
+            f"""
+            SELECT vl.license_plate,
+                   {vt_sql},
+                   vl.ticket_type,
+                   vl.entry_time,
+                   vl.exit_time,
+                   COALESCE(vl.fee, 0)
+            FROM vehicle_logs vl
+            WHERE vl.status != 'Đang trong bãi'
+              AND vl.exit_time IS NOT NULL
+            ORDER BY vl.exit_time DESC
             LIMIT %s
             """,
             (limit,),
