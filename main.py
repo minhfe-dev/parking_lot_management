@@ -723,13 +723,13 @@ class HistoryScreen(QWidget):
         filter_layout.addWidget(QLabel("Tên chủ xe:"), 0, 2)
         filter_layout.addWidget(self.search_name, 0, 3)
 
-        self.time_from = QDateTimeEdit(QDateTime.currentDateTime().addDays(-1))
+        self.time_from = QDateTimeEdit(self._history_default_time_from())
         self.time_from.setDisplayFormat("dd/MM/yyyy HH:mm")
         self.time_from.setCalendarPopup(True)
         filter_layout.addWidget(QLabel("Từ thời gian:"), 1, 0)
         filter_layout.addWidget(self.time_from, 1, 1)
 
-        self.time_to = QDateTimeEdit(QDateTime.currentDateTime())
+        self.time_to = QDateTimeEdit(self._history_default_time_to())
         self.time_to.setDisplayFormat("dd/MM/yyyy HH:mm")
         self.time_to.setCalendarPopup(True)
         filter_layout.addWidget(QLabel("Đến thời gian:"), 1, 2)
@@ -763,6 +763,14 @@ class HistoryScreen(QWidget):
 
         self.setLayout(layout)
         self.load_data()
+
+    @staticmethod
+    def _history_default_time_from():
+        return QDateTime.currentDateTime().addYears(-10)
+
+    @staticmethod
+    def _history_default_time_to():
+        return QDateTime.currentDateTime()
 
     def _format_history_cell(self, val):
         if val is None:
@@ -800,8 +808,8 @@ class HistoryScreen(QWidget):
     def clear_filters(self):
         self.search_plate.clear()
         self.search_name.clear()
-        self.time_to.setDateTime(QDateTime.currentDateTime())
-        self.time_from.setDateTime(QDateTime.currentDateTime().addDays(-1))
+        self.time_to.setDateTime(self._history_default_time_to())
+        self.time_from.setDateTime(self._history_default_time_from())
         self.load_data()
 
 

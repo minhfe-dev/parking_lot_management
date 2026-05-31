@@ -1,3 +1,5 @@
+import re
+
 from data.connect_database import get_connection
 
 # Thứ tự khóa khớp bảng Lịch sử trên UI (HistoryScreen)
@@ -10,6 +12,10 @@ HISTORY_ROW_KEYS = (
     "exit_time",
     "fee_or_status",
 )
+
+
+def _normalize_plate(plate: str) -> str:
+    return re.sub(r"[^A-Za-z0-9]", "", (plate or "").upper())
 
 
 def _norm_plate_sql(expr: str) -> str:
@@ -141,8 +147,8 @@ def search(plate: str, name: str, t_from: str, t_to: str):
 
         p = (plate or "").strip()
         if p:
-            conds.append("vl.license_plate LIKE %s")
-            params.append(f"%{p}%")
+            conds.append(f"{_norm_plate_sql('vl.license_plate')} LIKE %s")
+            params.append(f"%{_normalize_plate(p)}%")
 
         n = (name or "").strip()
         if n:
