@@ -1,6 +1,3 @@
-Parking Lot Management
-Team size: 3
-Member: - Truong Tien Minh ( Leader )
-        - Ha Ngoc Nam
-        - Nguyen Tuan Anh
+# Parking lot management
+Application helps users manage and monitor parking activities (by day, by month), manage employees, and view revenue statistics 
 
